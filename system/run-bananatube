@@ -26,10 +26,12 @@ audio_only_on_lid = yes
 history_size = 50
 cache_size = 12
 search_timeout_ms = 6000
-# The RK3568's video unit through the kernel's stateless decoder. This image's ffmpeg has the kernel's
-# h264/hevc/vp9 v4l2m2m and no Rockchip MPP, so v4l2m2m-copy is the one to use. "no" is software, if a
-# codec is refused; auto-safe lets mpv choose. rkmpp-copy would need the MPP library in the image first.
-hwdec = v4l2m2m-copy
+# The RK3568's video unit, through the kernel's stateless decoder (the hantro/rkvdec driver, which the
+# BananaOS kernel carries from 0.4.2 onward). auto-safe uses it when it is there and falls back to software
+# when it is not, so a video still plays if the decoder ever fails to bind. v4l2m2m-copy forces the kernel's
+# decoder and fails loudly if it is missing; no is software only. rkmpp-copy needs Rockchip's MPP, which this
+# image does not have.
+hwdec = auto-safe
 CONF
 
 # The clock, the time zone and the sound route are the menu's settings, as they are for a game.

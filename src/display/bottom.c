@@ -43,6 +43,18 @@ void bottom_fini(Bottom *b, int fd)
 void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
                     const BottomTex *tex, int tex_n, float scale)
 {
+    /* A page flip in flight: the CRTC is already switching to another buffer and the event has not arrived
+     * yet. Programming it now would cancel the flip -- the next frame's dl_diff will still be the cumulative
+     * change (prev is not advanced), and a skipped frame is one the user cannot see anyway. banana-ui's
+     * kms.cpp does exactly this: its present() returns false when its own pending counter is non-zero. */
+    if (b->pending > 0) {
+        static int warned = 0;
+        if (!warned) { log_line("bottom: %s -- skipping a frame: a flip is in flight", p->name); warned = 1; }
+        b->last_pixels = 0;
+        b->last_draws = dl->n;
+        return;
+    }
+
     Damage own, dmg;
     long painted = 0;
     int back = b->front ^ 1;
@@ -101,12 +113,22 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
     }
 
     /* A page flip when one can be queued -- the CRTC switches at the next vblank instead of being
-     * reprogrammed, which is the difference between a frame costing microseconds and costing a modeset. A
-     * flip already in flight, or a lost master, falls back to setting the CRTC directly: never skip the frame,
-     * because the frame is already drawn and the app believes it is on screen. */
-    if (b->pending > 0 || !drm_page_flip(fd, p, dst, &b->pending)) {
+     * reprogrammed. The fallback is a direct modeset, as banana-ui's present() does when
+     * drmModePageFlip returns an error -- and like banana-ui's fallback, it never waits for a vblank.
+     * drmWaitVBlank blocks until the CRTC scans out, which on a busy or disabled CRTC meant hundreds of
+     * milliseconds (that is what "the UI is still laggy, 450 ms a frame" was -- the log's own numbers
+     * showed the painting took tens of milliseconds and the rest was the block).
+     *
+     * The counter is ours to raise: the handler in drm.c drops it when the flip completes, and the check at
+     * the top of this function skips a frame while it is up -- the two of them pass a token between them,
+     * and an increment that is missing there means two flips queued at once, which cancels the first. */
+    static int first_flip = -1, first_mode = -1;
+    if (drm_page_flip(fd, p, dst, &b->pending)) {
+        b->pending++;
+        if (first_flip) { log_line("bottom: %s -- page flips", p->name); first_flip = 0; }
+    } else {
         drm_set_crtc(fd, p, dst);
-        drm_wait_vblank(fd, p);
+        if (first_mode) { log_line("bottom: %s -- flips refused, a modeset each frame", p->name); first_mode = 0; }
     }
 
     /* The buffer going behind the flip misses *this frame's* changes -- and only those. */

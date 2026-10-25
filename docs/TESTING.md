@@ -189,6 +189,17 @@ Two things are worth knowing about it:
   Mesa is built for another SoC — the app logs it, browses normally on the CPU, and only the video is lost. It
   used to exit, which is what made it untestable anywhere but the handheld.
 
+## What the fifth run found
+
+| | |
+|---|---|
+| **Still 450 ms a frame** | the IPv4 retry worked (the log now reads `the media URL fetches fine (HTTP 206 from …a22c to …)`, and the video *did* start to load) — but the lag was mine: the modeset fallback path still called `drm_wait_vblank()`, which **blocks until the CRTC scans out**, and banana-ui's fallback never waits. Removed. A flip in flight now skips the present (again like banana-ui), and the pending counter is actually raised on a successful flip — without that increment two flips could queue and the second cancelled the first. |
+| **`h264_v4l2m2m: Could not find a valid device`** | the videos now resolve *and fetch*; the decoder then failed because **the BananaOS kernel has no video decoder at all**: `linux-banana.fragment` disables the whole media subsystem (`# CONFIG_MEDIA_SUPPORT is not set`, one of the boot-time trims), so there is no `/dev/video*` for ffmpeg's v4l2m2m to open. Fixed in BananaOS, not here: the fragment now enables the minimum for the RK3568's H.264 decoder — `MEDIA_SUPPORT`, `MEDIA_PLATFORM_*`, `V4L2_MEM2MEM/H264/VP9`, `VIDEO_HANTRO[_ROCKCHIP]` — and the pieces line up: the driver's `rk3568_vpu_variant` carries `HANTRO_H264_DECODER`, and the board's own device tree has the `rockchip,rk3568-vpu` node enabled. This needs the new kernel: **apply the update package**, a copied binary is not enough. |
+
+The launcher's default `hwdec` is `auto-safe` now, not `v4l2m2m-copy`: it uses the kernel's decoder when it
+binds and falls back to software when it does not, so a video plays either way. `v4l2m2m-copy` forces the
+decoder and fails loudly; `no` is software only.
+
 ## What the fourth run found
 
 | | |

@@ -62,6 +62,13 @@ grid scaled by 1.6, and the software renderer scales its geometry and its text t
 hard-coded: `drm_find_panels()` reads it from the connector (the kernel command line's `video=DSI-2:...` first,
 then the panel's preferred mode), so `banana-panel-tune`'s rewritten device tree is what is used.
 
+**Never wait for a vblank when presenting.** banana-ui's `present()` queues a page flip and moves on, skips a
+frame while a flip is in flight, and its fallback (a lost master, a refused flip) is a direct `drmModeSetCrtc`
+with *no* wait. The first version of `bottom_present()` did all three wrong: it waited on `drmWaitVBlank` after
+the fallback (a blocking call until the CRTC scans out, which is where a 450 ms "laggy" frame went), and it
+forgot to raise the pending counter on a successful flip, so two flips could queue and the second cancelled the
+first. The pace is the pending counter, not the kernel's vblank event.
+
 **Two DRM devices, not one** — which the first run on the handheld made clear. `card0` is the display
 controller (the `rockchip` driver, which owns the connectors); the Mali GPU is a separate card (`panfrost`, with
 no display at all). Mesa bridges them with **kmsro**: a render-only GPU driver paired with a display-only KMS
