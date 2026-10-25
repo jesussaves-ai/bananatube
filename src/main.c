@@ -244,8 +244,11 @@ int main(int argc, char **argv)
     history_path(conf_path, hist_path, sizeof hist_path);
     if (history_load(&history, hist_path))
         log_line("history: %d entries from %s", history.count, hist_path);
-    /* a query on the command line is what the menu passes when it starts us for a search already typed */
-    const char *initial = argc > 1 ? argv[1] : NULL;
+    /* A search already typed on the command line: run-bananatube banana theme. The menu passes the entry it
+     * found instead -- this app's marker file -- and that is not a query (util.c's arg_is_query). */
+    const char *initial = NULL;
+    for (int i = 1; i < argc && !initial; i++)
+        if (arg_is_query(argv[i])) initial = argv[i];
 
     int fd = drm_open();
     if (fd < 0) { log_line("no DRM device: %s", strerror(errno)); return 1; }

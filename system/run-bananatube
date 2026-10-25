@@ -1,6 +1,6 @@
 #!/bin/sh
-# BananaTube: the YouTube client. Started by bananad the way a game is (it takes the DRM master while it runs
-# and gives it back on exit, and bananad brings the menu up again).
+# BananaTube: the YouTube client. Started by the menu the way a game is: banana-ui lets go of the panels, the
+# client takes the DRM master while it runs and gives it back on exit, and the menu comes up again.
 #   run-bananatube [search words]
 # The settings are banana/bananatube.conf on the card; BANANA_TOP and BANANA_TOUCH are the same contract
 # BananaDS gets (docs/EMULATORS.md in BananaLinux).
@@ -28,8 +28,7 @@ search_timeout_ms = 6000
 hwdec = v4l2m2m-copy
 CONF
 
-# The clock, the time zone and the sound route come from the menu's settings, as they do for a game.
-[ -f "$D/settings.conf" ] || true
+# The clock, the time zone and the sound route are the menu's settings, as they are for a game.
 
 # Its log, last run kept as .1 (readable on a computer over file sharing)
 [ -f $L/bananatube.log ] && mv -f $L/bananatube.log $L/bananatube.1.log

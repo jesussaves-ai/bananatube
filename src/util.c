@@ -42,6 +42,15 @@ bool str_ends(const char *s, const char *suffix)
     return n >= m && strcmp(s + n - m, suffix) == 0;
 }
 
+bool arg_is_query(const char *arg)
+{
+    if (!arg || !*arg)  return false;
+    if (arg[0] == '-')  return false;              /* an option, not a search */
+    if (arg[0] == '/')  return false;              /* an absolute path */
+    if (str_ends(arg, ".app")) return false;       /* the shelf's marker file */
+    return true;
+}
+
 bool str_contains(const char *s, const char *part)
 {
     return s && part && strstr(s, part) != NULL;

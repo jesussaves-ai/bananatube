@@ -44,4 +44,11 @@ size_t url_encode(const char *in, char *out, size_t cap);
 /* A view count as a person would read it: 987, 12K, 3.4M. An unknown (negative) count is "". */
 void fmt_views(long long views, char *out, size_t cap);
 
+/* ---- the command line -------------------------------------------------------------------------------- */
+/* Is this argument something to search for? The menu starts an app with the entry it found, which for this
+ * app is its own marker file -- /usr/share/banana/apps/bananatube/BananaTube.app -- and a search for that
+ * path is not what opening YouTube should do. An option ("--shot") and a path (absolute, or ending in .app)
+ * are not queries; anything else is. */
+bool arg_is_query(const char *arg);
+
 #endif /* BANANATUBE_UTIL_H */
