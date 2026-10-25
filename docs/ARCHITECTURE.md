@@ -53,6 +53,21 @@ grid scaled by 1.6, and the software renderer scales its geometry and its text t
 hard-coded: `drm_find_panels()` reads it from the connector (the kernel command line's `video=DSI-2:...` first,
 then the panel's preferred mode), so `banana-panel-tune`'s rewritten device tree is what is used.
 
+**Two DRM devices, not one** — which the first run on the handheld made clear. `card0` is the display
+controller (the `rockchip` driver, which owns the connectors); the Mali GPU is a separate card (`panfrost`, with
+no display at all). Mesa bridges them with **kmsro**: a render-only GPU driver paired with a display-only KMS
+device, so a GBM device made from `card0` hands back buffers the display can scan out. `display/gbm_egl.c`
+therefore tries `card0` first, and the GPU's own `/dev/dri/renderD*` only if the driver refuses, in which case
+the buffers reach the display through a dma-buf (`add_fb()` does it the dma-buf way for both, because that is
+correct for both).
+
+And the GBM surface has to be created in the format the **chosen EGL config** asks for
+(`EGL_NATIVE_VISUAL_ID`), not in a format picked before looking: a surface in XRGB8888 against a config whose
+visual is ARGB8888 is an `EGL_BAD_MATCH` out of `eglCreateWindowSurface`, which reads in the log as "no EGL on
+the top panel". The first version picked XRGB8888 up front and did exactly that on the device. The init path
+now also logs every config the driver offers and `eglGetError()` at each step, because the failure is a
+driver's opinion and the log is the only place to read it on a handheld.
+
 ## 3. Input
 
 Read straight from `/dev/input/event*` with `poll()` — `evdev` lets several readers share a device, which is how

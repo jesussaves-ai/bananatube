@@ -82,7 +82,11 @@ static bool http_fetch(const char *video_id, uint8_t **data, size_t *len, void *
 static void *thumb_main(void *arg)
 {
     ThumbWorker *w = arg;
-    nice(5);                                        /* the panels come first */
+    /* The panels come first. A refusal here is not worth failing for: the worker still works, it just
+     * competes for the CPU. The result has to be looked at -- nice() is declared warn_unused_result -- and
+     * errno is not checked because it is only meaningful if the call did fail for a reason. */
+    if (nice(5) == -1)
+        log_line("thumbnail worker: nice(5) was refused, running at the inherited priority");
 
     for (;;) {
         pthread_mutex_lock(&w->lock);

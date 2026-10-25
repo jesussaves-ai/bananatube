@@ -16,6 +16,8 @@ typedef struct {
     void               *egl_display;      /* EGLDisplay */
     void               *egl_context;      /* EGLContext */
     void               *egl_surface;      /* EGLSurface */
+    int                 kms_fd;           /* the display device, for KMS */
+    int                 egl_fd;           /* the device GBM/EGL took, when it is not kms_fd; -1 otherwise */
     uint32_t            fb;               /* the framebuffer KMS scans out */
     uint32_t            crtc;
     uint32_t            conn;             /* attached on the first swap, which is what sets the mode */

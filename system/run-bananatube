@@ -12,6 +12,9 @@ mkdir -p $L
 
 export BANANA_TOP=${BANANA_TOP:-DSI-2}                  # the top panel's connector; the other is the bottom
 export BANANA_TOUCH=${BANANA_TOUCH:-fe5e0000.i2c}       # part of the bottom touchscreen's sysfs path
+# Mesa keeps a shader cache: the root is a read-only squashfs, so without this it tries //.cache, fails, and
+# compiles every shader again at each start (the log says "Failed to create //.cache ... disabling").
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-$D/cache}
 
 # The first run writes the settings, so the file is there for the Settings screen and for editing on a card.
 [ -f "$D/bananatube.conf" ] || cat > "$D/bananatube.conf" <<'CONF'
