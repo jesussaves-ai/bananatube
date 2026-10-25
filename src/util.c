@@ -125,3 +125,15 @@ size_t url_encode(const char *in, char *out, size_t cap)
     out[w] = '\0';
     return w;
 }
+
+void fmt_views(long long views, char *out, size_t cap)
+{
+    if (!out || cap == 0) return;
+    out[0] = '\0';
+    if (views < 0) return;
+    if (views < 1000) { snprintf(out, cap, "%lld", views); return; }
+    if (views < 1000000) { snprintf(out, cap, "%lldK", views / 1000); return; }
+    long long m10 = views / 100000;                     /* tenths of a million */
+    if (m10 >= 100) { snprintf(out, cap, "%lldM", views / 1000000); return; }
+    snprintf(out, cap, "%lld.%lldM", m10 / 10, m10 % 10);
+}

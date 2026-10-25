@@ -28,4 +28,15 @@ void font_draw(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
                int x, int y, int w, int h, const char *utf8,
                FontId id, int size, uint32_t color, HAlign align, VAlign valign);
 
+/* The same, but breaking the text at spaces into lines no wider than `w`, at most `max_lines` of them (the
+ * last one ellipsised when it does not fit). What a video title is drawn with. */
+void font_draw_box(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
+                   int clip_x, int clip_y, int clip_w, int clip_h,
+                   int x, int y, int w, int h, const char *utf8,
+                   FontId id, int size, uint32_t color, HAlign align, VAlign valign,
+                   bool wrap, int max_lines, int line_height);
+
+/* How many lines that wrapping would take, and how wide the longest is (for measuring a box before drawing). */
+int  font_wrap_count(FontCtx *f, FontId id, int size, const char *utf8, int w, int max_lines);
+
 #endif /* BANANATUBE_FONT_H */

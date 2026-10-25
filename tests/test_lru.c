@@ -41,9 +41,13 @@ int main(void)
     thumb_init(&big, 0);
     check_int(thumb_slot_for(&big, "aaaaaaaaaaa"), -1);
 
-    /* the URL is the small one: 320x180 is the size we want decoded on this SoC */
-    check(str_contains(thumb_url("dQw4w9WgXcQ"), "dQw4w9WgXcQ"));
-    check(str_ends(thumb_url("dQw4w9WgXcQ"), "mqdefault.jpg"));
+    /* the URL is the small one: 320x180 is the size we want decoded on this SoC, with the big one to fall back on */
+    char u[160];
+    thumb_url("dQw4w9WgXcQ", THUMB_SMALL, u, sizeof u);
+    check(str_contains(u, "dQw4w9WgXcQ"));
+    check(str_ends(u, "mqdefault.jpg"));
+    thumb_url("dQw4w9WgXcQ", THUMB_LARGE, u, sizeof u);
+    check(str_ends(u, "hqdefault.jpg"));
 
     test_done();
 }

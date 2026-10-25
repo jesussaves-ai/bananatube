@@ -20,13 +20,23 @@ Phase 1 (this repository's first commit) — the skeleton, built and tested:
 | ✅ | The software screen: draw lists, damage diffing, `memcpy` blits, rounded boxes, text through FreeType |
 | ✅ | The backend core: Invidious/Piped and InnerTube, the stream-format rules, the thumbnail cache, settings |
 | ✅ | `buildroot/package/bananatube` and the launcher `system/run-bananatube` |
-| ⏳ | Phase 2: the search screen, the virtual keyboard, the results grid, thumbnail upload |
+| ✅ | **Phase 2**: the search field and on-screen keyboard, the results grid, and pictures fetched and decoded on background threads |
 | ⏳ | Phase 3: libmpv rendering into the EGL surface, `rkmpp`/`v4l2-request` hwdecode, the OSD |
 | ⏳ | Phase 4: transport and scrubbing, history, lid-close audio-only |
 
-Phase 1 run on the handheld lights both panels: the top one cycles through a colour, and the bottom one shows the
-clock, the buttons as they are pressed and the tap coordinates. That is enough to prove the risky part — one
-process driving one panel through the GPU and the other through the CPU, with the display handover working.
+On the handheld the bottom panel is the client: type a search with the D-pad or by touch, and the results come
+back as a grid of tiles with their pictures, durations and view counts. The top panel is where the video will
+play — Phase 3 puts libmpv on the EGL surface that is already set up for it.
+
+| | |
+|---|---|
+| The results grid | Grabbing `bananatube --shot`, which renders the client with no panels (see [Test](#test)):<br><img src="docs/img/results.png" width="420" alt="The results grid: a search field, three columns of video tiles with thumbnails, durations and view counts, and the selected tile marked"> |
+| Typing a search | <img src="docs/img/keyboard.png" width="420" alt="The on-screen keyboard: four rows of ten keys and a row of wide keys, with one row of results still visible above"> |
+| The same, on the Plus | <img src="docs/img/results-plus.png" width="420" alt="The results grid at the RG DS Plus's 1024x768, the same layout scaled by 1.6"> |
+| Before a search | <img src="docs/img/first-run.png" width="420" alt="The first screen: a search field and the words Press SELECT to search YouTube"> |
+
+*These are the bottom panel, rendered by the same code the handheld runs — `bananatube --shot` draws the client
+into a buffer with no DRM, no GPU and no network.*
 
 ## Build
 
@@ -47,9 +57,20 @@ sh tests/run.sh          # configures, builds and runs every host test
 ```
 
 The tests need no DRM device, no GPU and no network. They cover the parts where being wrong is expensive and
-invisible: the damage diff (a wrong one smears or freezes the bottom screen), the stream-format rules (choosing
-AV1, which the RK3568's video unit cannot decode, pegs all four cores), the two backends' replies, the button
-mapping and the settings file.
+invisible:
+
+| | |
+|---|---|
+| `drawlist` | the damage diff: a wrong one smears or freezes the bottom screen |
+| `select` | the stream rules: choosing AV1, which the RK3568's video unit cannot decode, pegs all four cores |
+| `render` | the software renderer at 1.0 **and 1.6**: a draw that forgets to scale is invisible on the RG DS and paints an empty tile over its neighbour on the Plus (it did) |
+| `parse` | both backends' replies, from canned bodies |
+| `ui` | the grid's geometry and selection, the keyboard, and what each button means |
+| `worker` | the thumbnail queue and the JPEG decode, with the fetch injected: a real JPEG, decoded off the thread |
+| `keys` `conf` `lru` | the button mapping, the settings file, the picture cache |
+
+They have already paid for themselves: two real bugs (a title arriving as a plain string in the player reply,
+and a picture painted at the wrong scale) were caught this way rather than on hardware.
 
 ## Run
 

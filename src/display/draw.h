@@ -25,9 +25,17 @@ typedef enum { FIT_COVER = 0, FIT_CONTAIN, FIT_FILL, FIT_PIXEL } Fit;
 
 typedef enum { FONT_UI = 0, FONT_UI_BOLD, FONT_MONO } FontId;
 
-/* An image is a slot in the texture table (net/thumbnail.c fills them). -1 is "nothing to draw yet", which
- * draws the op's placeholder colour instead. */
+/* An image is a slot in the picture table (net/thumbnail.c decodes into them, main.c owns them). -1 is
+ * "nothing to draw yet", which draws the op's placeholder colour instead. */
 #define IMAGE_NONE (-1)
+
+/* A decoded picture: RGB565, byte-swapped, as libjpeg hands it over. On the bottom screen these live in
+ * ordinary memory and the software renderer scales them into the frame -- no GPU, no texture upload, which is
+ * the whole reason the bottom panel is drawn on the CPU. */
+typedef struct {
+    const uint8_t *pixels;
+    int            w, h;
+} BottomTex;
 
 typedef struct {
     OpKind   kind;
@@ -43,7 +51,10 @@ typedef struct {
     int      size;
     HAlign   align;
     VAlign   valign;
-    char     text[80];            /* already truncated: the op does not carry a pointer */
+    bool     wrap;                /* break at spaces into at most max_lines lines of `w` */
+    int      max_lines;
+    int      line_height;         /* 0: the font's own line height */
+    char     text[160];           /* already truncated: the op does not carry a pointer */
 
     int      image;               /* OP_IMAGE: the texture slot */
     Fit      fit;

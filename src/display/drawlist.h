@@ -32,6 +32,9 @@ DrawOp *dl_rect_outlined(DrawList *dl, int x, int y, int w, int h, int radius,
                          uint32_t color, int border, uint32_t border_color);
 DrawOp *dl_text(DrawList *dl, int x, int y, int w, int h, const char *text, FontId font, int size,
                 uint32_t color, HAlign align, VAlign valign);
+/* Text that breaks at spaces into at most `max_lines` lines: a video title. */
+DrawOp *dl_text_wrapped(DrawList *dl, int x, int y, int w, int h, const char *text, FontId font, int size,
+                        uint32_t color, HAlign align, VAlign valign, int max_lines, int line_height);
 DrawOp *dl_image(DrawList *dl, int x, int y, int w, int h, int image, Fit fit, uint32_t placeholder);
 
 /* ---- the damage between two frames -------------------------------------------------------------------

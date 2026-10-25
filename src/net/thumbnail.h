@@ -18,8 +18,13 @@
 #include <stdint.h>
 
 #define THUMB_MAX_SLOTS 48
+/* The cache's target picture size, and the most the decoder ever produces. */
 #define THUMB_W 320
 #define THUMB_H 180
+/* What a tile in the grid actually draws (194x109) plus a margin: decoding to at least this, and no more, is
+ * what lets libjpeg halve an hqdefault fallback (480x360 -> 240x180) instead of decoding it whole. */
+#define THUMB_DRAW_W 208
+#define THUMB_DRAW_H 117
 
 typedef struct {
     int     cap;                                  /* slots in use cap (<= THUMB_MAX_SLOTS) */
@@ -45,13 +50,15 @@ void thumb_forget(ThumbCache *tc, int slot);
 int  thumb_count(const ThumbCache *tc);
 const char *thumb_id_at(const ThumbCache *tc, int slot);
 
-/* Where the picture for a video lives. mqdefault is 320x180 -- the size we want, so the handheld decodes
- * less; the caller falls back to a second URL when that one 404s (some videos only have hqdefault). */
-const char *thumb_url(const char *video_id);
+/* Where the picture for a video lives. SMALL is mqdefault (320x180): the size we want, so the handheld
+ * decodes less. LARGE is hqdefault (480x360), which is the fallback -- some videos have only that one. */
+typedef enum { THUMB_SMALL = 0, THUMB_LARGE } ThumbSize;
+size_t thumb_url(const char *video_id, ThumbSize size, char *out, size_t cap);
 
-/* Decodes a JPEG into RGB565, scaled down by libjpeg to at most max_w x max_h (1/2, 1/4 or 1/8: the
- * cheapest scaling there is, and it happens during the decode). *out is malloc'd by the caller's free().
- * Returns false and logs when the picture cannot be read. */
+/* Decodes a JPEG into RGB565. libjpeg scales it down by 1/2, 1/4 or 1/8 -- the cheapest scaling there is,
+ * and it happens during the decode -- while the result is still at least max_w x max_h, so the picture is
+ * never upscaled afterwards and never bigger than it needs to be for where it is drawn. *out is malloc'd by
+ * the caller's free(). Returns false and logs when the picture cannot be read. */
 bool thumb_decode(const uint8_t *data, size_t n, uint8_t **out, int *w, int *h, int max_w, int max_h);
 
 #endif /* BANANATUBE_THUMBNAIL_H */

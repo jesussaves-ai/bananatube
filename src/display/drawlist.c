@@ -109,7 +109,8 @@ bool op_equal(const DrawOp *a, const DrawOp *b)
         return a->radius == b->radius && a->border == b->border && a->border_color == b->border_color;
     case OP_TEXT:
         return a->font == b->font && a->size == b->size && a->align == b->align &&
-               a->valign == b->valign && strcmp(a->text, b->text) == 0;
+               a->valign == b->valign && a->wrap == b->wrap && a->max_lines == b->max_lines &&
+               a->line_height == b->line_height && strcmp(a->text, b->text) == 0;
     case OP_IMAGE:
         return a->image == b->image && a->fit == b->fit && a->tint == b->tint;
     }
@@ -196,6 +197,14 @@ DrawOp *dl_text(DrawList *dl, int x, int y, int w, int h, const char *text, Font
     op->color = color;
     op->align = align; op->valign = valign;
     str_copy(op->text, sizeof op->text, text);
+    return op;
+}
+
+DrawOp *dl_text_wrapped(DrawList *dl, int x, int y, int w, int h, const char *text, FontId font, int size,
+                        uint32_t color, HAlign align, VAlign valign, int max_lines, int line_height)
+{
+    DrawOp *op = dl_text(dl, x, y, w, h, text, font, size, color, align, valign);
+    if (op) { op->wrap = true; op->max_lines = max_lines; op->line_height = line_height; }
     return op;
 }
 

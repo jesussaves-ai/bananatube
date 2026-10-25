@@ -121,7 +121,30 @@ In order of preference:
 5. audio is the highest-bitrate audio-only stream, so a DASH video and its audio are two URLs libmpv plays
    together; a muxed `formats`/`formatStreams` entry needs no second stream.
 
-## 5. Playback (Phase 3)
+## 5. The bottom screen's UI (Phase 2)
+
+Three views, one of which is drawn at a time: the **results grid** (the search field, three columns of tiles,
+the button hints), the **keyboard** over the grid, and later **playback**. `ui/view.c` owns the state and
+answers one question per button — "type this", "search", "play", "quit" — which is what keeps `main.c` free of
+screen logic and the whole thing testable without a display.
+
+The drawing is the family of helpers in `ui/widget.c` (a card, a well, a hint chip, a bar, a spinner) plus the
+grid in `ui/results.c` and the keyboard in `input/keyboard.c`, all pushing DrawOps. **A tile's picture is not a
+texture upload**: the bottom panel is drawn by the CPU, so a decoded thumbnail is an RGB565 buffer in ordinary
+memory and the renderer scales it into the frame. That removes a whole GPU path the plan had assumed, and it is
+why the cache's budget is 12 pictures × ~90 KB rather than VRAM.
+
+The pictures themselves come from `net/thumbworker.c`: two niced threads fetching with libcurl and decoding
+with libjpeg (scaled 1/2, 1/4 or 1/8 during the decode), and a queue the main loop drains. A video is asked for
+once — the grid asks every frame and the worker remembers what is queued or in flight — and a picture that
+fails frees its slot to be tried again. What draws the grid decides what to fetch, so scrolling fills in behind
+itself.
+
+The renderer (`display/render.c`) is deliberately **not** in the DRM half: it draws into any ARGB32 buffer, so
+the tests render at both panel sizes, and `bananatube --shot` renders the client to a picture on a machine with
+no panels at all (which is how the screenshots in the README are made, and what a CI run can diff).
+
+## 6. Playback (Phase 3)
 
 libmpv renders into the EGL surface `display/gbm_egl.c` already creates, through `mpv_render_context` — the same
 surface Phase 1 paints a cycling colour into. The options that matter on a 1 GB device:
@@ -140,15 +163,15 @@ video-output-levels=limited   # a full-range picture on a limited-range panel lo
 The OSD (a buffering spinner, the resolution badge, a timestamp while scrubbing) is drawn into the same surface
 as a few textured quads rather than a second plane, and only when it changes.
 
-## 6. Memory
+## 7. Memory
 
 | | |
 |---|---|
 | libmpv + ffmpeg (no cache) | 35–45 MB |
 | Decoded frames (hardware DMABUFs) | 8–12 MB |
+| Result pictures, 12 slots at up to 320x180 RGB565 (plus the ones being fetched) | ~1.5 MB — ordinary memory, not VRAM |
 | EGL/GBM surfaces, top panel (2x 1024x768) | 6–8 MB |
 | Bottom panel dumb buffers (2x 640x480) | 3 MB |
-| Thumbnails, 12 slots at 320x180 RGB565 | 1.4 MB |
 | Draw lists, glyph cache, curl buffers | 3–4 MB |
 | **Peak during 720p playback** | **~75–90 MB** |
 | **Idle, browsing** | **~30–35 MB** |
@@ -161,12 +184,12 @@ The thumbnail cache is a fixed number of slots (`cache_size`, 12 by default) wit
 screenful resident, and the least recently drawn slot is the one reused. Pictures are decoded by libjpeg with
 `scale_denom` set to 1/2, 1/4 or 1/8, so the scaling happens during the decode instead of on the CPU afterwards.
 
-## 7. Phases
+## 8. Phases
 
 | | |
 |---|---|
 | **1. Both panels** | DRM, GBM/EGL, dumb buffers, the damage-diffing renderer, evdev, FreeType, the handover. **Done** — see the README's status table. |
-| **2. Search on the bottom screen** | The search field, the virtual keyboard, the results grid, the async thumbnail fetcher and its GLES upload. |
+| **2. The bottom screen** | **Done.** The search field, the keyboard, the results grid, and the background thumbnail fetcher and decoder (`net/thumbworker.c`), blitted by the CPU renderer. |
 | **3. Video on the top screen** | `net/resolver.c` is written; what remains is `mpv_render_context` on the existing EGL surface, and measuring `v4l2-request` against `rkmpp` at 480p60 and 720p60. |
 | **4. Transport and persistence** | Scrubbing, the quality switch, history (SQLite, which BananaOS already carries) and lid-close audio-only. |
 

@@ -135,6 +135,98 @@ int font_text_width(FontCtx *f, FontId id, int size, const char *utf8)
     return w;
 }
 
+/* Breaks `utf8` at spaces into lines no wider than `w`, at most `max_lines`, and reports how many it made.
+ * The last line is ellipsised when the text does not fit. Byte-wise, which is right for a break at a space in
+ * UTF-8: a multi-byte character never contains 0x20. */
+static int wrap_text(FontCtx *f, FontId id, int size, const char *utf8, int w, int max_lines,
+                     char out[][192], int cap)
+{
+    if (!utf8) return 0;
+    if (max_lines < 1) max_lines = 1;
+    if (max_lines > cap) max_lines = cap;
+    if (w <= 0) w = 1;
+
+    int n = 0;
+    const char *p = utf8;
+    while (*p && n < max_lines) {
+        /* the longest run of words that fits (or, if a single word does not, as much of it as does) */
+        int taken = 0, last_space = -1, len = 0;
+        while (p[len] && p[len] != '\n') {
+            if (p[len] == ' ') last_space = len;
+            char probe[192];
+            size_t l = (size_t)len + 1;
+            if (l >= sizeof probe) break;
+            memcpy(probe, p, l);
+            probe[l] = '\0';
+            if (font_text_width(f, id, size, probe) > w) break;
+            taken = len + 1;
+            len++;
+        }
+        /* a word boundary is nicer than a chopped word, as long as it is not the whole line */
+        int cut = taken;
+        if (p[cut] && p[cut] != '\n' && last_space > 0 && last_space < taken) cut = last_space;
+
+        size_t out_n = (size_t)cut;
+        const char *rest = p + cut;
+        while (*rest == ' ') rest++;
+
+        bool last = (n == max_lines - 1);
+        bool more = (*rest != '\0');
+        if (out_n >= 191) out_n = 191;
+        memcpy(out[n], p, out_n);
+        out[n][out_n] = '\0';
+        if (last && more) {
+            /* it does not all fit: end the last line with an ellipsis */
+            while (out_n > 1 && font_text_width(f, id, size, out[n]) + font_text_width(f, id, size, "...") > w)
+                out[n][--out_n] = '\0';
+            str_copy(out[n] + out_n, sizeof out[n] - out_n, "...");
+        }
+        n++;
+        if (!more) break;
+        p = rest;
+    }
+    /* one trailing newline run: the caller asked for lines, and an empty last line is not one */
+    while (n > 1 && out[n - 1][0] == '\0') n--;
+    return n;
+}
+
+int font_wrap_count(FontCtx *f, FontId id, int size, const char *utf8, int w, int max_lines)
+{
+    char lines[8][192];
+    if (max_lines > 8) max_lines = 8;
+    return wrap_text(f, id, size, utf8, w, max_lines, lines, 8);
+}
+
+void font_draw_box(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
+                   int clip_x, int clip_y, int clip_w, int clip_h,
+                   int x, int y, int w, int h, const char *utf8,
+                   FontId id, int size, uint32_t color, HAlign align, VAlign valign,
+                   bool wrap, int max_lines, int line_height)
+{
+    if (!f || !dst || !utf8 || !*utf8) return;
+
+    char lines[8][192];
+    int nl = 1;
+    if (wrap) nl = wrap_text(f, id, size, utf8, w, max_lines > 0 ? max_lines : 8, lines, 8);
+    else str_copy(lines[0], sizeof lines[0], utf8);
+
+    int lh = line_height > 0 ? line_height : font_line_height(f, id, size);
+    int block = lh * nl;
+    int top = y;
+    if (valign == VALIGN_MIDDLE) top = y + (h - block) / 2;
+    else if (valign == VALIGN_BOTTOM) top = y + h - block;
+
+    for (int i = 0; i < nl; i++) {
+        int tw = font_text_width(f, id, size, lines[i]);
+        int px = x;
+        if (align == ALIGN_CENTER) px = x + (w - tw) / 2;
+        else if (align == ALIGN_RIGHT) px = x + w - tw;
+        int py = top + i * lh + lh;                    /* the baseline */
+        font_draw(f, dst, dst_w, dst_h, clip_x, clip_y, clip_w, clip_h,
+                  px, py - lh, tw > w ? w : tw, lh, lines[i], id, size, color, ALIGN_LEFT, VALIGN_TOP);
+    }
+}
+
 void font_draw(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
                int clip_x, int clip_y, int clip_w, int clip_h,
                int x, int y, int w, int h, const char *utf8,

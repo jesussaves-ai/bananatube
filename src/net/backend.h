@@ -14,6 +14,9 @@
 
 #include <stdbool.h>
 
+/* how many results a search keeps: as many as a 640x480 grid can scroll through before it stops helping */
+#define SEARCH_RESULTS_MAX 40
+
 #define VIDEO_ID_LEN 16
 #define TITLE_LEN    160
 #define CHANNEL_LEN  80

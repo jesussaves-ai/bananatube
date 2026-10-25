@@ -76,12 +76,12 @@ void thumb_forget(ThumbCache *tc, int slot)
     }
 }
 
-const char *thumb_url(const char *video_id)
+size_t thumb_url(const char *video_id, ThumbSize size, char *out, size_t cap)
 {
-    /* One static buffer: the caller copies it out immediately. */
-    static char url[160];
-    snprintf(url, sizeof url, "https://i.ytimg.com/vi/%s/mqdefault.jpg", video_id ? video_id : "");
-    return url;
+    if (!out || cap == 0) return 0;
+    int n = snprintf(out, cap, "https://i.ytimg.com/vi/%s/%s.jpg", video_id ? video_id : "",
+                     size == THUMB_LARGE ? "hqdefault" : "mqdefault");
+    return n > 0 ? (size_t)n : 0;
 }
 
 /* ---- JPEG -> RGB565 ------------------------------------------------------------------------------------ */

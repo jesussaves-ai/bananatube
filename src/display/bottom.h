@@ -15,12 +15,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* A picture the caller has decoded (net/thumbnail.c): RGB565, byte-swapped, or NULL when a slot is empty. */
-typedef struct {
-    const uint8_t *pixels;
-    int            w, h;
-} BottomTex;
-
 typedef struct {
     DumbBuf   buf[2];
     int       page;
@@ -38,8 +32,12 @@ void bottom_set_font(Bottom *b, FontCtx *f);
 void bottom_fini(Bottom *b, int fd);
 
 /* Draws `dl` and puts it on the panel. `tex` (may be NULL) is the thumbnail table the OP_IMAGE draws read;
- * a slot with no pixels draws the op's placeholder colour. */
+ * a slot with no pixels draws the op's placeholder colour.
+ *
+ * `scale` is the panel's size over the 640x480 the UI is designed in: 1 on the RG DS (and under QEMU), 1.6 on
+ * the RG DS Plus. Geometry and text are multiplied by it, so the same draws fill either panel. */
 void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
-                    const BottomTex *tex, int tex_n);
+                    const BottomTex *tex, int tex_n, float scale);
+
 
 #endif /* BANANATUBE_BOTTOM_H */

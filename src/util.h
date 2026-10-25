@@ -41,4 +41,7 @@ int   fmt_pad(int n, int width, char *out, size_t cap);
  * written (the output is always NUL-terminated; a short buffer truncates). */
 size_t url_encode(const char *in, char *out, size_t cap);
 
+/* A view count as a person would read it: 987, 12K, 3.4M. An unknown (negative) count is "". */
+void fmt_views(long long views, char *out, size_t cap);
+
 #endif /* BANANATUBE_UTIL_H */
