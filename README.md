@@ -52,6 +52,9 @@ it, and `system/systems.conf.snippet` is exactly those seven lines to add to `/e
 The client is started the way a game is: the menu lets go of the panels and runs `run-bananatube`, which takes
 the DRM master, plays, and gives it back when it exits — bananad's handover, the same one BananaDS uses.
 
+**[docs/TESTING.md](docs/TESTING.md)** is what to look for on the handheld: the panels, the touch mapping, the
+decoder, the lid against bananad's sleep, and the memory numbers — everything the host tests cannot check.
+
 ## Build
 
 Needs `cmake`, a C11 compiler, and the dev packages for `libdrm`, `egl`, `glesv2`, `gbm`, `freetype2`, `libjpeg`,
