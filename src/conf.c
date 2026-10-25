@@ -18,6 +18,9 @@ void conf_defaults(Conf *c)
     c->history_size = 50;
     c->cache_size = 12;
     c->search_timeout_ms = 6000;
+    /* The RK3568's video unit, through the kernel's stateless decoder. A desktop falls back to whatever
+     * mpv's auto-safe finds; the launcher writes the handheld's value into bananatube.conf. */
+    str_copy(c->hwdec, sizeof c->hwdec, "auto-safe");
 }
 
 const char *conf_quality_name(Quality q)
@@ -82,6 +85,7 @@ bool conf_set(Conf *c, const char *key, const char *value)
     if (strcmp(key, "history_size") == 0)      { c->history_size = clampi(atoi(value), 0, 1000); return true; }
     if (strcmp(key, "cache_size") == 0)        { c->cache_size = clampi(atoi(value), 1, 48); return true; }
     if (strcmp(key, "search_timeout_ms") == 0) { c->search_timeout_ms = clampi(atoi(value), 500, 60000); return true; }
+    if (strcmp(key, "hwdec") == 0) { str_copy(c->hwdec, sizeof c->hwdec, value); return true; }
     return false;
 }
 
@@ -127,17 +131,20 @@ bool conf_save(const Conf *c, const char *path)
         "#                    the panel is 480 tall, so 480p is the default.\n"
         "# audio_only_on_lid  yes: closing the lid keeps the sound playing and drops the video\n"
         "# history_size       how many watched videos to keep\n"
-        "# cache_size         how many thumbnails to hold in video memory (12 is about 1.4 MB)\n"
+        "# cache_size         how many result pictures to hold (12 is about 1.2 MB of ordinary memory)\n"
+        "# hwdec              mpv's decoder. The RK3568's video unit needs v4l2m2m-copy (the kernel's\n"
+        "#                    stateless decoder) or rkmpp-copy (Rockchip's own). auto-safe lets mpv choose.\n"
         "backend = %s\n"
         "instance = %s\n"
         "quality = %s\n"
         "audio_only_on_lid = %s\n"
         "history_size = %d\n"
         "cache_size = %d\n"
-        "search_timeout_ms = %d\n",
+        "search_timeout_ms = %d\n"
+        "hwdec = %s\n",
         conf_backend_name(c->backend), c->instance, conf_quality_name(c->quality),
         c->audio_only_on_lid ? "yes" : "no",
-        c->history_size, c->cache_size, c->search_timeout_ms);
+        c->history_size, c->cache_size, c->search_timeout_ms, c->hwdec);
     fclose(f);
     return true;
 }

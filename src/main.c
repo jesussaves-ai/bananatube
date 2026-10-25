@@ -17,6 +17,11 @@
 #include "net/resolver.h"
 #include "net/worker.h"
 #include "ui/view.h"
+#ifdef BANANATUBE_MPV
+#include "display/gles_blit.h"
+#include "player/player.h"
+#include "player/osd.h"
+#endif
 #include "util.h"
 
 #include <errno.h>
@@ -59,7 +64,7 @@ static const char *first_font(const char *env_name, const char *device, const ch
 #define CONF_PATH_DEFAULT "/data/banana/bananatube.conf"
 
 /* the headless picture of the bottom screen, defined at the end of this file */
-static int shot(const char *path, bool keyboard, bool with_results, bool plus);
+static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing);
 
 /* ---- the pictures ---------------------------------------------------------------------------------------
  * One slot per thumbnail, in ordinary memory: the bottom panel is drawn by the CPU, so a decoded picture is a
@@ -141,13 +146,14 @@ int main(int argc, char **argv)
 
     if (argc > 1 && strcmp(argv[1], "--shot") == 0) {
         const char *out = argc > 2 ? argv[2] : "/tmp/bananatube.ppm";
-        bool kb = false, empty = false, plus = false;
+        bool kb = false, empty = false, plus = false, playing = false;
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "keyboard") == 0) kb = true;
             else if (strcmp(argv[i], "empty") == 0) empty = true;
             else if (strcmp(argv[i], "plus") == 0) plus = true;
+            else if (strcmp(argv[i], "playing") == 0) playing = true;
         }
-        return shot(out, kb, !empty, plus);
+        return shot(out, kb, !empty, plus, playing);
     }
 
     Conf conf;
@@ -179,6 +185,28 @@ int main(int argc, char **argv)
                              first_font("BANANATUBE_FONTS", TTF_PIXEL, "rnds/fonts/PixelifySans-Medium.ttf"));
     if (!fnt) log_line("no fonts: the bottom screen will have no text");
     bottom_set_font(&bottom, fnt);
+
+#ifdef BANANATUBE_MPV
+    /* The player renders into the top panel's EGL context, which gbm_egl_init left current on this thread. */
+    PlayerGl pgl = {
+        .egl_display = egl.egl_display,
+        .egl_context = egl.egl_context,
+        .egl_surface = egl.egl_surface,
+        .get_proc_address = (void *(*)(const char *))eglGetProcAddress,
+        .width = top.w,
+        .height = top.h,
+    };
+    Player *player = player_create(conf.hwdec, 200);
+    if (player && !player_attach_render(player, &pgl)) {
+        log_line("no render context: the top screen will stay dark");
+        player_destroy(player);
+        player = NULL;
+    }
+    if (!player) log_line("no player: the top screen will stay dark");
+    Osd osd;
+    if (!osd_init(&osd, top.w, (float)top.w / SCREEN_W)) log_line("no OSD buffer");
+    if (player) blit_init();
+#endif
 
     InputCtx in;
     input_init(&in, touch_hint);
@@ -212,10 +240,19 @@ int main(int argc, char **argv)
         int nfds = 0;
         pfds[nfds].fd = fd; pfds[nfds].events = POLLIN; nfds++;
         nfds += input_pollfds(&in, pfds + 1, INPUT_MAX_DEV);
+#ifdef BANANATUBE_MPV
+        int wake_at = -1;
+        if (player) { wake_at = nfds; pfds[nfds].fd = player_wake_fd(player); pfds[nfds].events = POLLIN; nfds++; }
+#endif
 
-        int timeout = (ui.searching || thumb_worker_pending(thumbs)) ? 100 : (dirty ? 0 : 300);
+        /* A playing video sets the pace: mpv's pipe wakes us with each frame. */
+        bool playing = ui.playing.active;
+        int timeout = playing ? 1000 : ((ui.searching || thumb_worker_pending(thumbs)) ? 100 : (dirty ? 0 : 300));
         int rc = poll(pfds, (nfds_t)nfds, timeout);
         if (rc < 0 && errno != EINTR) { log_line("poll: %s", strerror(errno)); break; }
+#ifdef BANANATUBE_MPV
+        if (wake_at >= 0 && (pfds[wake_at].revents & POLLIN)) player_wake_drain(player);
+#endif
 
         int nk = input_dispatch(&in, pfds + 1, keys, INPUT_EVENTS_MAX, &touch);
 
@@ -252,11 +289,33 @@ int main(int argc, char **argv)
                     ui_set_status(&ui, "A search is already running.");
                 break;
             case UI_PLAY: {
+                const SearchResult *r = &ui.results.item[ui.results.sel];
+                ui_set_status(&ui, "Resolving\xE2\x80\xA6");
                 StreamUrl s;
-                ResolveStatus rs = resolver_resolve(&conf, ui.results.item[ui.results.sel].id, &s);
+                ResolveStatus rs = resolver_resolve(&conf, r->id, &s);
+#ifdef BANANATUBE_MPV
+                if (rs == RESOLVE_OK && player && player_open(player, &s)) {
+                    ui_set_playing(&ui, r->title, r->channel);
+                    ui.dirty = true;
+                    break;
+                }
+                if (rs == RESOLVE_OK && !player) rs = RESOLVE_ALL_FAILED;
+#endif
                 ui_set_status(&ui, resolve_status_text(rs));
                 break;
             }
+#ifdef BANANATUBE_MPV
+            case UI_STOP:
+                if (player) player_close(player);
+                ui_set_playing_stopped(&ui, "");
+                break;
+            case UI_PAUSE:
+                if (player) player_toggle_pause(player);
+                ui.dirty = true;
+                break;
+            case UI_SEEK_BACK:    if (player) player_seek(player, -10.0); break;
+            case UI_SEEK_FORWARD: if (player) player_seek(player,  10.0); break;
+#endif
             case UI_THUMBS:
                 request_visible_thumbs(&ui, &cache, thumbs);
                 break;
@@ -286,24 +345,65 @@ int main(int argc, char **argv)
             dirty = true;
         }
 
+        /* The video keeps its own clock: render whenever mpv says there is a frame, whatever the UI is doing. */
+#ifdef BANANATUBE_MPV
+        if (player) {
+            player_tick(player);
+            if (player_active(player)) {
+                ui_set_playing_state(&ui, player_position(player), player_duration(player),
+                                     player_paused(player), player_buffering(player),
+                                     player_width(player), player_height(player));
+                if (player_eof(player)) {
+                    player_close(player);
+                    ui_set_playing_stopped(&ui, "Finished.");
+                }
+            } else if (ui.playing.active) {
+                /* it stopped under us: an error, or the stream ended */
+                const char *why = player_error(player);
+                ui_set_playing_stopped(&ui, why && *why ? why : "Stopped.");
+            }
+            if (player_frame_ready(player) && player_active(player)) {
+                player_render(player);
+
+                float ospin = (float)((now / 120) % 8) / 8.0f;
+                const SearchResult *r = ui.results.count ? &ui.results.item[ui.results.sel] : NULL;
+                osd_update(&osd, fnt, player, r ? r->title : NULL,
+                           player_error(player), player_paused(player), ospin);
+                osd_draw(&osd, top.w, top.h);
+
+                gbm_egl_swap(fd, &egl);
+                dirty = true;                 /* the bottom screen may be showing the position */
+            }
+        }
+#endif
+
         if (dirty) {
             ui_draw(&ui, &dl, pics, THUMB_MAX_SLOTS);
             bottom_present(&bottom, fd, &bot, &dl, pics, THUMB_MAX_SLOTS, (float)bot.w / SCREEN_W);
 
-            /* Top panel: no video yet. Phase 3 replaces this with libmpv rendering into the same surface, and
-             * the OSD drawn over it. A slow dark pulse, so it is obvious which panel is which and that it is
-             * alive. */
-            float p = (float)((now / 40) % 60) / 60.0f;
-            float k = 0.045f + 0.015f * p;
-            glClearColor(k * 0.9f, k, k * 1.25f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            gbm_egl_swap(fd, &egl);
+            /* With no video, the top panel is a dark placeholder: a slow pulse, so it is obvious which panel is
+             * which and that the app is alive. */
+#ifdef BANANATUBE_MPV
+            if (!(player && player_active(player)))
+#endif
+            {
+                float p = (float)((now / 40) % 60) / 60.0f;
+                float k = 0.045f + 0.015f * p;
+                glClearColor(k * 0.9f, k, k * 1.25f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                gbm_egl_swap(fd, &egl);
+            }
 
             dirty = false;
         }
     }
 
     log_line("quitting");
+#ifdef BANANATUBE_MPV
+    if (player) { player_destroy(player); player = NULL; }
+    osd_free(&osd);
+    blit_fini();
+#endif
     tex_free_all(pics, THUMB_MAX_SLOTS);
     thumb_worker_stop(thumbs);
     search_job_stop(search);
@@ -321,14 +421,14 @@ int main(int argc, char **argv)
  * no EGL and no panels (plus: the RG DS Plus's 1024x768 at 1.6),
  * with a made-up set of results. It is how the layout is looked at on a machine that has none, and what a CI
  * run can diff. The pictures are flat colours: no network is involved. */
-static int shot(const char *path, bool keyboard, bool with_results, bool plus)
+static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing)
 {
     AppState ui;
     ui_init(&ui);
     ui.theme = ui_theme();
     ui.view = keyboard ? VIEW_KEYBOARD : VIEW_RESULTS;
     ui.spin = 0.4f;
-    if (with_results) str_copy(ui.query, sizeof ui.query, "banana theme");
+    if (with_results && !playing) str_copy(ui.query, sizeof ui.query, "banana theme");
 
     static BottomTex pics[THUMB_MAX_SLOTS];
     static uint8_t pic_a[THUMB_W * THUMB_H * 2], pic_b[THUMB_W * THUMB_H * 2];
@@ -341,7 +441,11 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus)
     pics[0].pixels = pic_a; pics[0].w = THUMB_W; pics[0].h = THUMB_H;
     pics[1].pixels = pic_b; pics[1].w = THUMB_W; pics[1].h = THUMB_H;
 
-    if (with_results) {
+    if (playing) {
+        ui_set_playing(&ui, "Making a theme for BananaOS, start to finish", "Banana Dev");
+        ui_set_playing_state(&ui, 4 * 60 + 12, 12 * 60 + 34, false, false, 854, 480);
+        ui.playing.buffering = false;
+    } else if (with_results) {
         SearchResult r[8];
         memset(r, 0, sizeof r);
         const char *titles[8] = {

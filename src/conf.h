@@ -18,6 +18,7 @@ typedef struct {
     int         history_size;         /* how many watched videos to keep */
     int         cache_size;           /* how many thumbnails to hold as textures (see net/thumbnail.c) */
     int         search_timeout_ms;    /* how long to wait on the backend before giving up */
+    char        hwdec[64];            /* mpv's decoder: v4l2m2m-copy or rkmpp-copy on the handheld */
 } Conf;
 
 void conf_defaults(Conf *c);

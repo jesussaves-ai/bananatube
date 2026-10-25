@@ -19,7 +19,18 @@
 typedef enum {
     VIEW_RESULTS = 0,        /* the grid, with the search bar above it */
     VIEW_KEYBOARD,           /* the keyboard over the grid, while a query is typed */
+    VIEW_PLAYING,            /* a video is on the top panel: this screen says what and controls it */
 } View;
+
+/* What the top panel is doing, as the bottom screen needs to show it. */
+typedef struct {
+    char   title[TITLE_LEN];
+    char   channel[CHANNEL_LEN];
+    double position, duration;
+    int    width, height;
+    bool   paused, buffering, active;
+    char   status[96];       /* why it stopped, or "" */
+} Playing;
 
 #define QUERY_MAX 96
 
@@ -30,6 +41,10 @@ typedef enum {
     UI_PLAY,                 /* A on a result: play the selected video */
     UI_QUIT,                 /* HOME */
     UI_THUMBS,               /* the visible set changed: fetch what is missing */
+    UI_STOP,                 /* B while playing: back to the results */
+    UI_PAUSE,                /* START while playing */
+    UI_SEEK_BACK,            /* L2 */
+    UI_SEEK_FORWARD,         /* R2 */
 } UiAction;
 
 typedef struct {
@@ -42,6 +57,7 @@ typedef struct {
 
     Results  results;
     Keyboard kb;
+    Playing  playing;
 
     int      view_x, view_y, view_w, view_h;   /* where the grid is drawn (the keyboard shrinks it) */
     float    spin;                             /* the spinner's phase, turned by main.c while a search runs */
@@ -54,5 +70,10 @@ void      ui_draw(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n);
 /* main.c tells the UI what happened, so it can say so on screen. */
 void      ui_set_results(AppState *st, const SearchResult *items, int n, const char *message);
 void      ui_set_status(AppState *st, const char *message);
+/* The video started: the bottom screen becomes the player's. */
+void      ui_set_playing(AppState *st, const char *title, const char *channel);
+void      ui_set_playing_state(AppState *st, double position, double duration, bool paused, bool buffering,
+                               int width, int height);
+void      ui_set_playing_stopped(AppState *st, const char *why);
 
 #endif /* BANANATUBE_VIEW_H */

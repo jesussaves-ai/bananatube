@@ -21,12 +21,14 @@ Phase 1 (this repository's first commit) — the skeleton, built and tested:
 | ✅ | The backend core: Invidious/Piped and InnerTube, the stream-format rules, the thumbnail cache, settings |
 | ✅ | `buildroot/package/bananatube` and the launcher `system/run-bananatube` |
 | ✅ | **Phase 2**: the search field and on-screen keyboard, the results grid, and pictures fetched and decoded on background threads |
-| ⏳ | Phase 3: libmpv rendering into the EGL surface, `rkmpp`/`v4l2-request` hwdecode, the OSD |
-| ⏳ | Phase 4: transport and scrubbing, history, lid-close audio-only |
+| ✅ | **Phase 3**: libmpv rendering the video into the top panel's EGL surface, hard-decoded, with the memory caps in force and an overlay; the bottom screen becomes the player's |
+| ⏳ | Phase 4: scrubbing, the quality switch, history and lid-close audio-only |
 
-On the handheld the bottom panel is the client: type a search with the D-pad or by touch, and the results come
-back as a grid of tiles with their pictures, durations and view counts. The top panel is where the video will
-play — Phase 3 puts libmpv on the EGL surface that is already set up for it.
+On the handheld the bottom panel is the client — type a search with the D-pad or by touch, and the results come
+back as a grid of tiles with their pictures — and the top panel plays the video, decoded by the RK3568's video
+unit. The overlay along the bottom of the video (the resolution being decoded, the position, a spinner while it
+buffers, and the frames it had to drop) is drawn by the same renderer as the bottom screen and uploaded as one
+texture.
 
 | | |
 |---|---|
@@ -34,6 +36,7 @@ play — Phase 3 puts libmpv on the EGL surface that is already set up for it.
 | Typing a search | <img src="docs/img/keyboard.png" width="420" alt="The on-screen keyboard: four rows of ten keys and a row of wide keys, with one row of results still visible above"> |
 | The same, on the Plus | <img src="docs/img/results-plus.png" width="420" alt="The results grid at the RG DS Plus's 1024x768, the same layout scaled by 1.6"> |
 | Before a search | <img src="docs/img/first-run.png" width="420" alt="The first screen: a search field and the words Press SELECT to search YouTube"> |
+| Playing a video | <img src="docs/img/playing.png" width="420" alt="While a video plays: its title, the channel, the resolution being decoded, a progress bar and the position, with START pause, L2/R2 to seek and B to stop"> |
 
 *These are the bottom panel, rendered by the same code the handheld runs — `bananatube --shot` draws the client
 into a buffer with no DRM, no GPU and no network.*
@@ -67,10 +70,15 @@ invisible:
 | `parse` | both backends' replies, from canned bodies |
 | `ui` | the grid's geometry and selection, the keyboard, and what each button means |
 | `worker` | the thumbnail queue and the JPEG decode, with the fetch injected: a real JPEG, decoded off the thread |
+| `player` | that libmpv's options *took*: the 16 MiB demuxer cache, no cache, no yt-dlp of its own, no config file — the settings that decide whether a 1 GB handheld survives |
 | `keys` `conf` `lru` | the button mapping, the settings file, the picture cache |
 
 They have already paid for themselves: two real bugs (a title arriving as a plain string in the player reply,
 and a picture painted at the wrong scale) were caught this way rather than on hardware.
+
+What the tests cannot check is what needs the device: whether `v4l2m2m-copy` or `rkmpp-copy` decodes 480p60 and
+720p60 without dropping frames, and whether the overlay's orientation matches the video's (one flag, if it does
+not — see `docs/ARCHITECTURE.md`).
 
 ## Run
 

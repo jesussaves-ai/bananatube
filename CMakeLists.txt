@@ -18,7 +18,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(BANANATUBE_KMS   "Build the DRM/KMS display half (libdrm, EGL, GBM, FreeType)" ON)
-option(BANANATUBE_MPV   "Build libmpv playback (Phase 3; needs libmpv)" OFF)
+option(BANANATUBE_MPV   "Build libmpv playback (Phase 3; off when libmpv is not there)" ON)
 option(BANANATUBE_TESTS "Build the host tests" ON)
 
 add_compile_options(-Wall -Wextra -Wno-unused-parameter)
@@ -65,11 +65,15 @@ if(BANANATUBE_KMS)
     pkg_check_modules(GLESV2 REQUIRED glesv2)
     pkg_check_modules(GBM    REQUIRED gbm)
 
-    set(LIBMPV_SRC)
+    # libmpv is Phase 3's playback. On by default when the library is there (a desktop checkout can build and
+    # test it); the Buildroot package turns it on explicitly.
+    set(HAVE_MPV OFF)
     if(BANANATUBE_MPV)
-        pkg_check_modules(MPV REQUIRED mpv)
-        set(LIBMPV_SRC src/player/mpv.c)
-        add_compile_definitions(BANANATUBE_MPV=1)
+        pkg_check_modules(MPV mpv)
+        if(MPV_FOUND)
+            set(HAVE_MPV ON)
+            add_compile_definitions(BANANATUBE_MPV=1)
+        endif()
     endif()
 
     add_executable(bananatube
@@ -78,8 +82,17 @@ if(BANANATUBE_KMS)
         src/display/gbm_egl.c
         src/display/bottom.c
         src/input/evdev.c
-        ${LIBMPV_SRC}
     )
+    if(HAVE_MPV)
+        add_library(bananatube_mpv STATIC
+            src/player/player.c
+            src/player/osd.c
+            src/display/gles_blit.c
+        )
+        target_include_directories(bananatube_mpv PUBLIC src PRIVATE ${MPV_INCLUDE_DIRS})
+        target_link_libraries(bananatube_mpv PUBLIC bananatube_core ${MPV_LIBRARIES})
+        target_link_libraries(bananatube PRIVATE bananatube_mpv)
+    endif()
     target_include_directories(bananatube PRIVATE
         ${DRM_INCLUDE_DIRS} ${EGL_INCLUDE_DIRS} ${GLESV2_INCLUDE_DIRS} ${GBM_INCLUDE_DIRS}
         ${MPV_INCLUDE_DIRS})
@@ -98,4 +111,12 @@ if(BANANATUBE_TESTS)
         target_compile_definitions(test_${t} PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
         add_test(NAME ${t} COMMAND test_${t})
     endforeach()
+
+    # the player's own test needs libmpv, so it is only built when it is there
+    if(HAVE_MPV)
+        add_executable(test_player tests/test_player.c)
+        target_link_libraries(test_player PRIVATE bananatube_mpv)
+        target_compile_definitions(test_player PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+        add_test(NAME player COMMAND test_player)
+    endif()
 endif()

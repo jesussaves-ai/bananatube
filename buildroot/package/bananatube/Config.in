@@ -9,10 +9,12 @@ config BR2_PACKAGE_BANANATUBE
 	select BR2_PACKAGE_JPEG
 	select BR2_PACKAGE_FREETYPE
 	select BR2_PACKAGE_ZLIB
+	select BR2_PACKAGE_MPV
 	help
 	  banana-tube, a native dual-screen YouTube client: a search and a video library on the bottom panel, the
 	  video itself hardware-decoded on the top one, and no browser, no WebView and no yt-dlp on the search path.
 	  It takes the DRM master from bananad the way BananaDS does, and is started by
 	  /usr/libexec/banana/run-bananatube (docs/ARCHITECTURE.md in the bananatube repository).
 
-	  Phase 3 adds libmpv: select BR2_PACKAGE_MPV and build with BANANATUBE_MPV=ON.
+	  libmpv renders the video into the top panel's EGL surface (Phase 3), with the demuxer cache capped at
+	  16 MiB and yt-dlp switched off: mpv's defaults assume a desktop's memory.

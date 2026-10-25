@@ -146,22 +146,41 @@ no panels at all (which is how the screenshots in the README are made, and what 
 
 ## 6. Playback (Phase 3)
 
-libmpv renders into the EGL surface `display/gbm_egl.c` already creates, through `mpv_render_context` — the same
-surface Phase 1 paints a cycling colour into. The options that matter on a 1 GB device:
+libmpv renders into the EGL surface `display/gbm_egl.c` creates, through `mpv_render_context` — the same surface
+the placeholder used to paint. `player/player.c` owns the handle and the options; `player/osd.c` is the overlay.
 
-```
-hwdec=v4l2m2m-copy            # the kernel's stateless decoder (no Rockchip userspace); rkmpp-copy if it drops frames
-vd-lavc-dr=yes                # decoded frames go straight to the GPU: no CPU copy of every frame
-demuxer-max-bytes=16MiB       # mpv's default is 150 MB, which is instant OOM here
-demuxer-max-back-bytes=4MiB   # the rewind buffer
-cache=no                      # stream it, do not cache to disk
-ytdl=no                       # mpv must never spawn its own yt-dlp: we resolved the URL ourselves
-video-sync=display-resample   # the panels are 60 Hz
-video-output-levels=limited   # a full-range picture on a limited-range panel looks washed out
-```
+**The main loop stays in charge.** mpv's update callback writes a byte to a self-pipe whose read end is in the
+same `poll()` as the panels, the buttons and the workers, so a frame is drawn when mpv has one and the bottom
+screen keeps responding in between. Nothing about the video is allowed to block the UI thread.
 
-The OSD (a buffering spinner, the resolution badge, a timestamp while scrubbing) is drawn into the same surface
-as a few textured quads rather than a second plane, and only when it changes.
+The options that matter on a 1 GB device, every one of them set before `mpv_initialize` and checked back in
+`tests/test_player.c`:
+
+| | |
+|---|---|
+| `hwdec` | the RK3568's video unit. `v4l2m2m-copy` is the kernel's stateless decoder and needs no Rockchip userspace; `rkmpp-copy` is their own library. `bananatube.conf` chooses, and the launcher writes the handheld's value |
+| `vd-lavc-dr=yes` | decoded frames go straight to the GPU: no CPU copy of every frame |
+| `demuxer-max-bytes=16MiB` | mpv's default is 150 MB, which on this device is an OOM rather than a stutter |
+| `demuxer-max-back-bytes=4MiB` | the rewind buffer |
+| `cache=no`, `cache-on-disk=no` | stream it; nothing is written to the card |
+| `ytdl=no` | mpv must never spawn its own yt-dlp: the URL was resolved in `net/resolver.c` |
+| `config=no`, `load-scripts=no` | nothing on the card may quietly undo any of the above |
+| `vo=libmpv`, `osc=no`, `input-default-bindings=no` | we own the surface, the input and the overlay |
+| `video-sync=display-resample`, `video-output-levels=limited` | the panels are 60 Hz and limited-range |
+| `keep-open=no`, `save-position-on-quit=no` | a session is not state; Phase 4 owns history |
+
+**The overlay** is a DrawList like the bottom screen's, rendered into an ARGB buffer by the same
+`display/render.c`, uploaded once as a texture (`display/gles_blit.c`) and drawn over the video. It shows the
+resolution being decoded, the position and duration, a spinner while mpv is reading ahead, and the frames it
+had to drop — and it is only re-uploaded when what it says changes, so an idle overlay costs nothing.
+
+**Two things only the device can settle**, both cheap to change:
+
+1. **Which decoder.** `v4l2m2m-copy` against `rkmpp-copy` at 480p60 and 720p60, with `player_dropped()` as the
+   measure. The overlay shows the count while it happens.
+2. **The overlay's orientation.** mpv is told `MPV_RENDER_PARAM_FLIP_Y=1` and the blitter flips its own
+   coordinates in the vertex shader to match; if the bar comes out upside-down on the panel, one of the two is
+   the wrong way round.
 
 ## 7. Memory
 
@@ -190,7 +209,7 @@ screenful resident, and the least recently drawn slot is the one reused. Picture
 |---|---|
 | **1. Both panels** | DRM, GBM/EGL, dumb buffers, the damage-diffing renderer, evdev, FreeType, the handover. **Done** — see the README's status table. |
 | **2. The bottom screen** | **Done.** The search field, the keyboard, the results grid, and the background thumbnail fetcher and decoder (`net/thumbworker.c`), blitted by the CPU renderer. |
-| **3. Video on the top screen** | `net/resolver.c` is written; what remains is `mpv_render_context` on the existing EGL surface, and measuring `v4l2-request` against `rkmpp` at 480p60 and 720p60. |
+| **3. Video on the top screen** | **Done.** `player/player.c` and `player/osd.c` render through `mpv_render_context` into the existing EGL surface, with the caps in force; the bottom screen becomes the player's (pause, seek, stop). The decoder measurement is the one thing left for the device. |
 | **4. Transport and persistence** | Scrubbing, the quality switch, history (SQLite, which BananaOS already carries) and lid-close audio-only. |
 
 Phase 1 was first because it is the risky one: it touches the same display path banana-ui and BananaDS use, and it

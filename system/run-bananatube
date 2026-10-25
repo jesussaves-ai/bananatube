@@ -23,6 +23,9 @@ audio_only_on_lid = yes
 history_size = 50
 cache_size = 12
 search_timeout_ms = 6000
+# the RK3568's video unit through the kernel's stateless decoder. rkmpp-copy is Rockchip's own library;
+# v4l2m2m-copy needs nothing but the kernel. If a video stutters, try the other one here.
+hwdec = v4l2m2m-copy
 CONF
 
 # The clock, the time zone and the sound route come from the menu's settings, as they do for a game.

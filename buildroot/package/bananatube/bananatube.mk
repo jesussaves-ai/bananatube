@@ -19,13 +19,13 @@ BANANATUBE_LICENSE = GPL-3.0-or-later
 BANANATUBE_LICENSE_FILES = LICENSE
 # libdrm (the panels), Mesa/Panfrost (GBM + EGL on the top screen), libcurl + cJSON (the backends),
 # libjpeg (thumbnails), FreeType (text), zlib
-BANANATUBE_DEPENDENCIES = libdrm mesa3d-panfrost libcurl cjson jpeg freetype zlib host-pkgconf
+BANANATUBE_DEPENDENCIES = libdrm mesa3d-panfrost libcurl cjson jpeg freetype zlib mpv host-pkgconf
 
 BANANATUBE_CONF_OPTS = \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DBANANATUBE_KMS=ON \
 	-DBANANATUBE_TESTS=OFF \
-	-DBANANATUBE_MPV=$(if $(BR2_PACKAGE_MPV),ON,OFF)
+	-DBANANATUBE_MPV=ON
 
 define BANANATUBE_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(BANANATUBE_BUILDDIR)/bananatube $(TARGET_DIR)/usr/bin/bananatube
