@@ -69,7 +69,7 @@ panel with a live `banana-ui` is a DRM handover problem worth a log.
 
 | | |
 |---|---|
-| **The decoder** | `hwdec = v4l2m2m-copy` is what the launcher writes. Play a 480p and a 720p video and watch the overlay's drop count. **Anything other than 0 means try `rkmpp-copy`** in `banana/bananatable.conf` (or `BANANATUBE_HWDEC=rkmpp-copy`). |
+| **The decoder** | `hwdec = v4l2m2m-copy` is what the launcher writes, and the only hardware decoder this image has: BananaOS's ffmpeg is built with the kernel's h264/hevc/vp9 v4l2m2m and with no Rockchip MPP, so **`rkmpp-copy` would fail to start — do not set it**. Play a 480p and a 720p video and watch the overlay's drop count. Non-zero means set `hwdec = no` in `banana/bananatube.conf` and compare (software decode, but no copy-back overhead), and tell me which was better. |
 | **The overlay's orientation** | The bar should be at the bottom of the video, the right way up. If it is upside-down or at the top, that is the `FLIP_Y` flag against the blitter's flip — tell me which and it is a one-line fix. |
 | Hardware decode at all? | The log has mpv's own line; `dmesg \| grep -i -E 'rkvdec\|v4l2\|mpp'` should show the decoder being opened. If mpv falls back to software the drop count will be loud about it. |
 | The picture | Full screen, letterboxed (16:9 in a 4:3 panel), no tearing, no green or smeared frames. |
@@ -135,7 +135,8 @@ Send me:
 ## Known unknowns, in order of how likely they are to need a change
 
 1. **The overlay's orientation** (`FLIP_Y` against the blitter's own flip). One line.
-2. **The decoder**: `v4l2m2m-copy` versus `rkmpp-copy`, and whether 720p60 holds. A setting already.
+2. **The decoder at 720p60**: whether the kernel's `v4l2m2m-copy` holds, or software is better for some
+   codec. A setting already (`rkmpp-copy` is not: no MPP in the image — see `docs/ARCHITECTURE.md` §6).
 3. **The lid against bananad's sleep**: whether "audio only with the lid shut" is what people want, or whether
    the two settings should be tied together.
 4. **The quality switch re-resolving**: it restarts the stream at the same position, which is honest but not

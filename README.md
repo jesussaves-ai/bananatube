@@ -92,9 +92,10 @@ invisible:
 They have already paid for themselves: two real bugs (a title arriving as a plain string in the player reply,
 and a picture painted at the wrong scale) were caught this way rather than on hardware.
 
-What the tests cannot check is what needs the device: whether `v4l2m2m-copy` or `rkmpp-copy` decodes 480p60 and
+What the tests cannot check is what needs the device: whether the kernel's `v4l2m2m-copy` decodes 480p60 and
 720p60 without dropping frames, and whether the overlay's orientation matches the video's (one flag, if it does
-not — see `docs/ARCHITECTURE.md`).
+not — see `docs/ARCHITECTURE.md`). What the *build* settled first is that `rkmpp-copy` is not available at all:
+BananaOS's ffmpeg has the kernel's v4l2m2m decoders and no Rockchip MPP library.
 
 ## Run
 

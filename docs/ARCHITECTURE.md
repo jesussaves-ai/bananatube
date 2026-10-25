@@ -158,7 +158,7 @@ The options that matter on a 1 GB device, every one of them set before `mpv_init
 
 | | |
 |---|---|
-| `hwdec` | the RK3568's video unit. `v4l2m2m-copy` is the kernel's stateless decoder and needs no Rockchip userspace; `rkmpp-copy` is their own library. `bananatube.conf` chooses, and the launcher writes the handheld's value |
+| `hwdec` | the RK3568's video unit. `v4l2m2m-copy` is the kernel's stateless decoder and needs no Rockchip userspace — and it is the one that works here, because BananaOS's ffmpeg is built with h264/hevc/vp9 v4l2m2m and no Rockchip MPP (so `rkmpp-copy` has no decoder to bind to). `no` is software. `bananatube.conf` chooses, and the launcher writes the handheld's value |
 | `vd-lavc-dr=yes` | decoded frames go straight to the GPU: no CPU copy of every frame |
 | `demuxer-max-bytes=16MiB` | mpv's default is 150 MB, which on this device is an OOM rather than a stutter |
 | `demuxer-max-back-bytes=4MiB` | the rewind buffer |
@@ -176,8 +176,12 @@ had to drop — and it is only re-uploaded when what it says changes, so an idle
 
 **Two things only the device can settle**, both cheap to change:
 
-1. **Which decoder.** `v4l2m2m-copy` against `rkmpp-copy` at 480p60 and 720p60, with `player_dropped()` as the
-   measure. The overlay shows the count while it happens.
+1. **Whether the kernel's decoder holds up.** `v4l2m2m-copy` against software (`hwdec = no`) at 480p60 and
+   720p60, with `player_dropped()` as the measure. The overlay shows the count while it happens. The plan had
+   `rkmpp-copy` as the alternative, and the built image settled that before any hardware did: BananaOS's ffmpeg
+   is configured with the kernel's h264/hevc/vp9 v4l2m2m decoders and with no Rockchip MPP, so `rkmpp-copy` has
+   no decoder to bind to. Turning it on would mean packaging the MPP library and adding `--enable-rkmpp` to
+   ffmpeg — worth doing only if the kernel's decoder is shown to fall short.
 2. **The overlay's orientation.** mpv is told `MPV_RENDER_PARAM_FLIP_Y=1` and the blitter flips its own
    coordinates in the vertex shader to match; if the bar comes out upside-down on the panel, one of the two is
    the wrong way round.

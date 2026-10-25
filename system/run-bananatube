@@ -23,8 +23,9 @@ audio_only_on_lid = yes
 history_size = 50
 cache_size = 12
 search_timeout_ms = 6000
-# the RK3568's video unit through the kernel's stateless decoder. rkmpp-copy is Rockchip's own library;
-# v4l2m2m-copy needs nothing but the kernel. If a video stutters, try the other one here.
+# The RK3568's video unit through the kernel's stateless decoder. This image's ffmpeg has the kernel's
+# h264/hevc/vp9 v4l2m2m and no Rockchip MPP, so v4l2m2m-copy is the one to use. "no" is software, if a
+# codec is refused; auto-safe lets mpv choose. rkmpp-copy would need the MPP library in the image first.
 hwdec = v4l2m2m-copy
 CONF
 
