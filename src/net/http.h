@@ -38,6 +38,7 @@ const cJSON *json_at(const cJSON *root, const char *path);
 /* A string member (empty when missing), a number (dflt when missing), a bool. */
 const char *json_str(const cJSON *o, const char *key, char *out, size_t cap);
 int         json_int(const cJSON *o, const char *key, int dflt);
+double      json_num(const cJSON *o, const char *key, double dflt);
 long long   json_ll(const cJSON *o, const char *key, long long dflt);
 bool        json_bool(const cJSON *o, const char *key, bool dflt);
 

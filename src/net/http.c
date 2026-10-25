@@ -173,6 +173,15 @@ int json_int(const cJSON *o, const char *key, int dflt)
     return dflt;
 }
 
+double json_num(const cJSON *o, const char *key, double dflt)
+{
+    const cJSON *v = o ? cJSON_GetObjectItemCaseSensitive(o, key) : NULL;
+    if (!v) return dflt;
+    if (cJSON_IsNumber(v)) return v->valuedouble;
+    if (cJSON_IsString(v) && v->valuestring) return atof(v->valuestring);
+    return dflt;
+}
+
 long long json_ll(const cJSON *o, const char *key, long long dflt)
 {
     const cJSON *v = o ? cJSON_GetObjectItemCaseSensitive(o, key) : NULL;

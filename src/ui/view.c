@@ -13,6 +13,34 @@
 #define GRID_Y     88
 #define HINTS_H    30
 
+/* Where each transport button is. One place, so a tap and the drawing cannot disagree (they did, once, for the
+ * result tiles: tests/test_ui.c checks both now). */
+void ui_transport_box(int i, int *x, int *w)
+{
+    int margin = 10, gap = 6;
+    int total = SCREEN_W - margin * 2;
+    int spaces = total - gap * (TP_COUNT - 1);
+    int each = spaces / TP_COUNT;
+    int extra = spaces - each * TP_COUNT;      /* the remainder: the first button takes it, so the row is
+                                                * flush at both ends rather than 3 px short of one */
+    if (x) *x = margin + (i == 0 ? 0 : extra + each + gap + (i - 1) * (each + gap));
+    if (w) *w = each + (i == 0 ? extra : 0);
+}
+
+/* Which button a tap at (px, py) landed on, or TP_NONE. */
+TransportButton ui_transport_hit(int px, int py)
+{
+    static const TransportButton order[TP_COUNT] = { TP_PREV, TP_VOL_DOWN, TP_PAUSE, TP_VOL_UP,
+                                                     TP_QUALITY, TP_NEXT, TP_STOP };
+    if (py < TP_Y || py >= TP_Y + TP_H) return TP_NONE;
+    for (int i = 0; i < TP_COUNT; i++) {
+        int x, w;
+        ui_transport_box(i, &x, &w);
+        if (px >= x && px < x + w) return order[i];
+    }
+    return TP_NONE;
+}
+
 static void layout(AppState *st)
 {
     st->view_x = 8;
@@ -72,6 +100,23 @@ void ui_set_playing_state(AppState *st, double position, double duration, bool p
     if (height > 0) pl->height = height;
 }
 
+void ui_set_full_state(AppState *st, int volume, int quality, bool video_on, int dropped)
+{
+    Playing *pl = &st->playing;
+    if (pl->volume != volume || pl->quality != quality || pl->video_on != video_on || pl->dropped != dropped)
+        st->dirty = true;
+    pl->volume = volume;
+    pl->quality = quality;
+    pl->video_on = video_on;
+    pl->dropped = dropped;
+}
+
+void ui_set_history(AppState *st, const History *h)
+{
+    st->history = h;
+    st->dirty = true;
+}
+
 void ui_set_playing_stopped(AppState *st, const char *why)
 {
     st->playing.active = false;
@@ -125,9 +170,35 @@ UiAction ui_key(AppState *st, BananaKey key)
         case BK_B:      return UI_STOP;
         case BK_START:  return UI_PAUSE;
         case BK_A:      return UI_PAUSE;
+        case BK_LEFT:   return UI_SEEK_BACK;
+        case BK_RIGHT:  return UI_SEEK_FORWARD;
         case BK_L2:     return UI_SEEK_BACK;
         case BK_R2:     return UI_SEEK_FORWARD;
-        case BK_SELECT: return UI_NONE;      /* the keyboard is for searching, not for this */
+        case BK_UP:     return UI_VOLUME_UP;
+        case BK_DOWN:   return UI_VOLUME_DOWN;
+        case BK_X:      return UI_QUALITY;
+        case BK_L1:     return UI_PREV_VIDEO;
+        case BK_R1:     return UI_NEXT_VIDEO;
+        default:        return UI_NONE;      /* SELECT is for searching, not for this */
+        }
+    }
+
+    if (st->view == VIEW_HISTORY) {
+        switch (key) {
+        case BK_UP:   case BK_LEFT:  case BK_L1:
+            st->history_sel = st->history_sel > 0 ? st->history_sel - 1 : 0;
+            st->dirty = true;
+            return UI_NONE;
+        case BK_DOWN: case BK_RIGHT: case BK_R1: case BK_L2: case BK_R2: {
+            int n = st->history ? history_order(st->history, NULL, 0) : 0;
+            if (st->history_sel + 1 < (int)st->history->count) st->history_sel++;
+            (void)n;
+            st->dirty = true;
+            return UI_NONE;
+        }
+        case BK_A:      return UI_PLAY;
+        case BK_B:      st->view = VIEW_RESULTS; layout(st); st->dirty = true; return UI_NONE;
+        case BK_SELECT: st->view = VIEW_RESULTS; layout(st); st->dirty = true; return UI_NONE;
         default:        return UI_NONE;
         }
     }
@@ -168,7 +239,16 @@ UiAction ui_key(AppState *st, BananaKey key)
     /* the results view */
     switch (key) {
     case BK_SELECT:
-        st->view = VIEW_KEYBOARD;
+        if (st->history && st->history->count > 0) {
+            st->view = VIEW_HISTORY;
+            st->history_sel = 0;
+            layout(st);
+            st->dirty = true;
+            return UI_NONE;
+        }
+        return UI_NONE;
+    case BK_X:
+        st->view = VIEW_KEYBOARD;            /* search: the keyboard, and SELECT is the watched list */
         kb_reset(&st->kb);
         layout(st);
         st->dirty = true;
@@ -240,9 +320,13 @@ static void draw_hints(AppState *st, DrawList *dl)
 
     if (st->view == VIEW_PLAYING) {
         x += widget_hint(dl, t, x, y, BK_START, st->playing.paused ? "resume" : "pause", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_L2, "-10s", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_R2, "+10s", false) + 12;
+        x += widget_hint(dl, t, x, y, BK_LEFT, "seek", false) + 12;
+        x += widget_hint(dl, t, x, y, BK_UP, "volume", false) + 12;
+        x += widget_hint(dl, t, x, y, BK_X, "quality", false) + 12;
         x += widget_hint(dl, t, x, y, BK_B, "stop", true) + 12;
+    } else if (st->view == VIEW_HISTORY) {
+        x += widget_hint(dl, t, x, y, BK_A, "carry on", true) + 12;
+        x += widget_hint(dl, t, x, y, BK_B, "back", false) + 12;
         x += widget_hint(dl, t, x, y, BK_HOME, "quit", false) + 12;
     } else if (st->view == VIEW_KEYBOARD) {
         x += widget_hint(dl, t, x, y, BK_A, "type", true) + 12;
@@ -252,9 +336,9 @@ static void draw_hints(AppState *st, DrawList *dl)
         x += widget_hint(dl, t, x, y, BK_START, "search", true) + 12;
     } else {
         x += widget_hint(dl, t, x, y, BK_A, "play", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_SELECT, "search", true) + 12;
+        x += widget_hint(dl, t, x, y, BK_X, "search", true) + 12;
+        x += widget_hint(dl, t, x, y, BK_SELECT, "history", false) + 12;
         x += widget_hint(dl, t, x, y, BK_B, "clear", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_HOME, "quit", false) + 12;
     }
     /* the status only where there is room for it: the keyboard's hints fill the row, and a message drawn
      * over them reads as neither */
@@ -267,17 +351,28 @@ static void draw_playing(AppState *st, DrawList *dl)
     const UiTheme *t = &st->theme;
     const Playing *pl = &st->playing;
 
-    dl_text_wrapped(dl, 20, 70, SCREEN_W - 40, 56, pl->title[0] ? pl->title : "Playing", FONT_UI_BOLD, 22,
-                    t->ink, ALIGN_LEFT, VALIGN_TOP, 2, 26);
-    widget_small(dl, t, 20, 132, SCREEN_W - 40, 20, pl->channel, ALIGN_LEFT);
+    dl_text_wrapped(dl, 16, 58, SCREEN_W - 32, 52, pl->title[0] ? pl->title : "Playing", FONT_UI_BOLD, 20,
+                    t->ink, ALIGN_LEFT, VALIGN_TOP, 2, 24);
+    widget_small(dl, t, 16, 114, SCREEN_W - 200, 18, pl->channel, ALIGN_LEFT);
+    if (pl->dropped > 0) {
+        char d[32];
+        snprintf(d, sizeof d, "%d frames dropped", pl->dropped);
+        dl_text(dl, SCREEN_W - 240, 114, 224, 18, d, FONT_UI, 11, t->warn, ALIGN_RIGHT, VALIGN_MIDDLE);
+    }
 
-    /* what the top panel is decoding */
+    /* what the video unit is decoding, and how loud it is */
     char badge[64];
-    if (pl->width > 0 && pl->height > 0) snprintf(badge, sizeof badge, "%dx%d", pl->width, pl->height);
+    if (!pl->video_on)                   snprintf(badge, sizeof badge, "%s", "audio only");
+    else if (pl->width > 0 && pl->height > 0) snprintf(badge, sizeof badge, "%dx%d", pl->width, pl->height);
     else                                 snprintf(badge, sizeof badge, "%s", "starting");
-    dl_rect_rounded(dl, 20, 162, 76, 26, 6, t->accent);
-    dl_text(dl, 20, 162, 76, 26, badge, FONT_UI_BOLD, 14, t->accent_ink, ALIGN_CENTER, VALIGN_MIDDLE);
-    if (pl->buffering && !pl->paused) widget_spinner(dl, t, 112, 175, 9, st->spin);
+    dl_rect_rounded(dl, 16, 140, 96, 24, 6, pl->video_on ? t->accent : t->faint);
+    dl_text(dl, 16, 140, 96, 24, badge, FONT_UI_BOLD, 13,
+            pl->video_on ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+    if (pl->buffering && !pl->paused && pl->video_on) widget_spinner(dl, t, 126, 152, 8, st->spin);
+
+    char vol[32];
+    snprintf(vol, sizeof vol, "volume %d%%", pl->volume);
+    widget_small(dl, t, SCREEN_W - 200, 140, 184, 24, vol, ALIGN_RIGHT);
 
     /* where we are */
     char a[16], b[16], times[48];
@@ -285,17 +380,85 @@ static void draw_playing(AppState *st, DrawList *dl)
     fmt_duration((int)pl->duration, b, sizeof b);
     snprintf(times, sizeof times, "%s / %s", a, b);
     float frac = pl->duration > 0 ? (float)(pl->position / pl->duration) : 0.0f;
-    widget_bar(dl, t, 20, 214, SCREEN_W - 40, 10, frac, true);
-    widget_mono(dl, t, 20, 228, SCREEN_W - 40, 22, times, ALIGN_CENTER);
+    widget_bar(dl, t, 16, 178, SCREEN_W - 32, 10, frac, true);
+    widget_mono(dl, t, 16, 190, SCREEN_W - 32, 20, times, ALIGN_CENTER);
+
+    /* the transport row: tapped, or driven by the buttons */
+    static const TransportButton order[TP_COUNT] = { TP_PREV, TP_VOL_DOWN, TP_PAUSE, TP_VOL_UP,
+                                                     TP_QUALITY, TP_NEXT, TP_STOP };
+    for (int i = 0; i < TP_COUNT; i++) {
+        int x, w;
+        ui_transport_box(i, &x, &w);
+        const char *label = "";
+        bool hot = false;
+        char q[16];
+        switch (order[i]) {
+        case TP_PREV:     label = "|<";  break;
+        case TP_NEXT:     label = ">|";  break;
+        case TP_VOL_DOWN: label = "vol -"; break;
+        case TP_VOL_UP:   label = "vol +"; break;
+        case TP_PAUSE:    label = pl->paused ? "> play" : "|| pause"; hot = true; break;
+        case TP_QUALITY:  snprintf(q, sizeof q, "%dp", pl->quality); label = q; break;
+        case TP_STOP:     label = "[] stop"; break;
+        default: break;
+        }
+        dl_rect_rounded(dl, x, TP_Y, w, TP_H, 8, hot ? t->accent : t->panel);
+        dl_text(dl, x, TP_Y, w, TP_H, label, FONT_UI_BOLD, 13,
+                hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+    }
 
     /* a paused video says so; so does a stopped one, with the reason */
     if (pl->paused)
-        widget_label(dl, t, 0, 268, SCREEN_W, 24, "Paused", ALIGN_CENTER);
+        widget_label(dl, t, 0, 296, SCREEN_W, 22, "Paused", ALIGN_CENTER);
     if (pl->status[0])
-        dl_text_wrapped(dl, 40, 268, SCREEN_W - 80, 48, pl->status, FONT_UI, 15, t->warn,
+        dl_text_wrapped(dl, 40, 294, SCREEN_W - 80, 44, pl->status, FONT_UI, 15, t->warn,
                         ALIGN_CENTER, VALIGN_TOP, 2, 20);
+    if (!pl->video_on)
+        widget_small(dl, t, 0, 320, SCREEN_W, 20, "The lid is shut: the sound carries on without the picture.",
+                     ALIGN_CENTER);
+}
 
-    widget_small(dl, t, 0, 330, SCREEN_W, 20, "The video is on the top screen.", ALIGN_CENTER);
+/* The watched list: what the history file holds, most recent first. */
+static void draw_history(AppState *st, DrawList *dl)
+{
+    const UiTheme *t = &st->theme;
+    const History *h = st->history;
+
+    if (!h || h->count == 0) {
+        widget_label(dl, t, 0, 220, SCREEN_W, 24, "Nothing watched yet", ALIGN_CENTER);
+        widget_small(dl, t, 0, 250, SCREEN_W, 20, "A video you have played turns up here, where it stopped.",
+                     ALIGN_CENTER);
+        return;
+    }
+
+    int row_h = 62, top = 92, rows = (SCREEN_H - 92 - 40) / row_h;
+    if (st->history_sel < st->history_scroll) st->history_scroll = st->history_sel;
+    if (st->history_sel >= st->history_scroll + rows) st->history_scroll = st->history_sel - rows + 1;
+    if (st->history_scroll < 0) st->history_scroll = 0;
+
+    for (int r = 0; r < rows; r++) {
+        int at = st->history_scroll + r;
+        if (at >= h->count) break;
+        const HistoryItem *it = &h->item[at];
+        bool on = (at == st->history_sel);
+        int y = top + r * row_h;
+
+        dl_rect_rounded(dl, 12, y, SCREEN_W - 24, row_h - 8, 8, on ? t->panel_hi : t->panel);
+        if (on) dl_rect_rounded(dl, 12, y, 3, row_h - 8, 2, t->accent);
+
+        dl_text_wrapped(dl, 24, y + 6, SCREEN_W - 190, 30, it->title, FONT_UI_BOLD, 14, t->ink,
+                        ALIGN_LEFT, VALIGN_TOP, 1, 18);
+        char line[160];
+        char pos[16], dur[16];
+        fmt_duration((int)it->position, pos, sizeof pos);
+        fmt_duration(it->duration_sec, dur, sizeof dur);
+        snprintf(line, sizeof line, "%s \xC2\xB7 %s of %s", it->channel, pos, dur);
+        widget_small(dl, t, 24, y + 28, SCREEN_W - 200, 20, line, ALIGN_LEFT);
+
+        /* how far in it got */
+        float frac = it->duration_sec > 0 ? (float)(it->position / it->duration_sec) : 0.0f;
+        widget_bar(dl, t, SCREEN_W - 150, y + 26, 126, 6, frac, true);
+    }
 }
 
 static void draw_empty(AppState *st, DrawList *dl)
@@ -321,6 +484,11 @@ void ui_draw(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
 
     if (st->view == VIEW_PLAYING) {
         draw_playing(st, dl);
+        draw_hints(st, dl);
+        return;
+    }
+    if (st->view == VIEW_HISTORY) {
+        draw_history(st, dl);
         draw_hints(st, dl);
         return;
     }

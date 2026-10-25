@@ -49,6 +49,15 @@ bool    player_paused(const Player *p);
 void    player_toggle_pause(Player *p);
 void    player_seek(Player *p, double seconds);  /* by seconds, relative */
 void    player_set_volume(Player *p, int percent);
+int     player_volume(const Player *p);
+
+/* The lid closed: keep the sound, drop the video (mpv's vid=no). The VPU stops working, which is the point on
+ * a handheld playing an album with the panels off. */
+void    player_set_video(Player *p, bool on);
+bool    player_video_on(const Player *p);
+
+/* Where the next open should begin: resuming from the history. */
+void    player_set_start(Player *p, double seconds);
 
 double  player_position(const Player *p);        /* seconds, 0 when unknown */
 double  player_duration(const Player *p);

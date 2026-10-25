@@ -2,6 +2,8 @@
 #include "player/player.h"
 #include "util.h"
 
+#include <stdbool.h>
+
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
@@ -329,8 +331,43 @@ void player_seek(Player *p, double seconds)
 void player_set_volume(Player *p, int percent)
 {
     if (!p) return;
-    double v = percent;
+    double v = clampi(percent, 0, 130);
     mpv_set_property(p->mpv, "volume", MPV_FORMAT_DOUBLE, &v);
+}
+
+int player_volume(const Player *p)
+{
+    if (!p) return 0;
+    double v = 0;
+    if (mpv_get_property(p->mpv, "volume", MPV_FORMAT_DOUBLE, &v) < 0) return 0;
+    return (int)(v + 0.5);
+}
+
+void player_set_video(Player *p, bool on)
+{
+    if (!p) return;
+    mpv_set_property_string(p->mpv, "vid", on ? "auto" : "no");
+    p->frame = true;
+    if (p->wake[1] >= 0) { ssize_t n = write(p->wake[1], "v", 1); (void)n; }
+}
+
+bool player_video_on(const Player *p)
+{
+    if (!p) return false;
+    char *v = NULL;
+    if (mpv_get_property(p->mpv, "vid", MPV_FORMAT_STRING, &v) < 0) return false;
+    bool on = v && strcmp(v, "no") != 0;
+    if (v) mpv_free(v);
+    return on;
+}
+
+void player_set_start(Player *p, double seconds)
+{
+    if (!p) return;
+    if (seconds <= 1.0) { mpv_set_option_string(p->mpv, "start", "none"); return; }
+    char v[32];
+    snprintf(v, sizeof v, "%.1f", seconds);
+    mpv_set_option_string(p->mpv, "start", v);
 }
 
 double player_position(const Player *p) { return p ? p->position : 0; }

@@ -43,6 +43,7 @@ add_library(bananatube_core STATIC
     src/net/thumbnail.c
     src/net/searchjob.c
     src/net/thumbworker.c
+    src/history.c
     src/ui/theme.c
     src/ui/widget.c
     src/ui/results.c
@@ -105,7 +106,7 @@ endif()
 # ---- tests --------------------------------------------------------------------------------------------
 if(BANANATUBE_TESTS)
     enable_testing()
-    foreach(t drawlist keys conf parse select lru ui worker render)
+    foreach(t drawlist keys conf parse select lru ui worker render history)
         add_executable(test_${t} tests/test_${t}.c)
         target_link_libraries(test_${t} PRIVATE bananatube_core)
         target_compile_definitions(test_${t} PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")

@@ -22,6 +22,7 @@
 #include "player/player.h"
 #include "player/osd.h"
 #endif
+#include "history.h"
 #include "util.h"
 
 #include <errno.h>
@@ -64,7 +65,7 @@ static const char *first_font(const char *env_name, const char *device, const ch
 #define CONF_PATH_DEFAULT "/data/banana/bananatube.conf"
 
 /* the headless picture of the bottom screen, defined at the end of this file */
-static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing);
+static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history);
 
 /* ---- the pictures ---------------------------------------------------------------------------------------
  * One slot per thumbnail, in ordinary memory: the bottom panel is drawn by the CPU, so a decoded picture is a
@@ -130,6 +131,83 @@ static void drain_thumbs(AppState *st, ThumbCache *cache, ThumbWorker *worker, B
     }
 }
 
+/* The history sits beside the settings, on the card. */
+static void history_path(const char *conf_path, char *out, size_t cap)
+{
+    str_copy(out, cap, conf_path);
+    char *slash = strrchr(out, '/');
+    if (slash) slash[1] = '\0';
+    else       out[0] = '\0';
+    strncat(out, "bananatube-history.json", cap - strlen(out) - 1);
+}
+
+#ifdef BANANATUBE_MPV
+/* Resolve a video and put it on the top panel. `resume_at` is where the history says it got to. */
+static bool start_video(AppState *ui, const Conf *conf, Player *player, History *hist,
+                        const char *id, const char *title, const char *channel, double resume_at)
+{
+    if (!player || !id || !*id) return false;
+
+    StreamUrl s;
+    ResolveStatus rs = resolver_resolve(conf, id, &s);
+    if (rs != RESOLVE_OK) {
+        ui_set_status(ui, resolve_status_text(rs));
+        return false;
+    }
+
+    player_set_start(player, resume_at);
+    if (!player_open(player, &s)) {
+        ui_set_status(ui, player_error(player));
+        return false;
+    }
+
+    history_touch(hist, id, title, channel, s.height > 0 ? 0 : -1);
+    ui_set_playing(ui, title, channel);
+    ui->playing.quality = (int)conf->quality;
+    ui->playing.volume = player_volume(player);
+    ui->playing.video_on = true;
+    ui->dirty = true;
+    return true;
+}
+
+/* Where the video is, into the history. `write_file` also puts it on the card (a pause, a stop, an exit);
+ * otherwise it only marks the state, and the file is written every half minute. */
+static void save_progress(AppState *ui, Player *player, History *hist, const char *conf_path, bool write_file)
+{
+    if (!player || !ui->playing.active || !hist) return;
+    if (ui->results.count == 0) return;
+    const SearchResult *r = &ui->results.item[ui->results.sel];
+    history_progress(hist, r->id, player_position(player));
+    if (write_file) {
+        char path[512];
+        history_path(conf_path, path, sizeof path);
+        history_save(hist, path);
+    }
+}
+
+/* X while a video plays: 360p -> 480p -> 720p, and back. It re-resolves at the new size and carries on from
+ * where it was, which is the only honest way to change quality mid-stream. */
+static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hist, const char *conf_path)
+{
+    switch ((int)conf->quality) {
+    case QUALITY_360: conf->quality = QUALITY_480; break;
+    case QUALITY_480: conf->quality = QUALITY_720; break;
+    default:          conf->quality = QUALITY_360; break;
+    }
+    conf_save(conf, conf_path);
+
+    if (!player || !ui->playing.active || ui->results.count == 0) {
+        ui->playing.quality = (int)conf->quality;
+        ui->dirty = true;
+        return true;
+    }
+    const SearchResult *r = &ui->results.item[ui->results.sel];
+    double at = player_position(player);
+    save_progress(ui, player, hist, conf_path, true);
+    return start_video(ui, conf, player, hist, r->id, r->title, r->channel, at);
+}
+#endif
+
 int main(int argc, char **argv)
 {
     signal(SIGUSR1, on_usr1);
@@ -146,19 +224,26 @@ int main(int argc, char **argv)
 
     if (argc > 1 && strcmp(argv[1], "--shot") == 0) {
         const char *out = argc > 2 ? argv[2] : "/tmp/bananatube.ppm";
-        bool kb = false, empty = false, plus = false, playing = false;
+        bool kb = false, empty = false, plus = false, playing = false, history = false;
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "keyboard") == 0) kb = true;
             else if (strcmp(argv[i], "empty") == 0) empty = true;
             else if (strcmp(argv[i], "plus") == 0) plus = true;
             else if (strcmp(argv[i], "playing") == 0) playing = true;
+            else if (strcmp(argv[i], "history") == 0) history = true;
         }
-        return shot(out, kb, !empty, plus, playing);
+        return shot(out, kb, !empty, plus, playing, history);
     }
 
     Conf conf;
     if (!conf_load(&conf, conf_path))
         log_line("no settings at %s: using the defaults", conf_path);
+
+    static History history;
+    char hist_path[512];
+    history_path(conf_path, hist_path, sizeof hist_path);
+    if (history_load(&history, hist_path))
+        log_line("history: %d entries from %s", history.count, hist_path);
     /* a query on the command line is what the menu passes when it starts us for a search already typed */
     const char *initial = argc > 1 ? argv[1] : NULL;
 
@@ -213,10 +298,14 @@ int main(int argc, char **argv)
 
     AppState ui;
     ui_init(&ui);
+    ui_set_history(&ui, &history);
     if (initial && *initial) {
         str_copy(ui.query, sizeof ui.query, initial);
         ui.view = VIEW_RESULTS;
         ui.searching = true;
+    } else if (history.query[0]) {
+        /* come back to the last search, so a restart is not a blank screen */
+        str_copy(ui.query, sizeof ui.query, history.query);
     }
 
     SearchJob *search = search_job_start(&conf);
@@ -285,36 +374,74 @@ int main(int argc, char **argv)
             switch (ui_key(&ui, keys[i].key)) {
             case UI_QUIT: g_quit = 1; break;
             case UI_SEARCH:
-                if (!search || !search_job_begin(search, ui.query))
+                if (!search || !search_job_begin(search, ui.query)) {
                     ui_set_status(&ui, "A search is already running.");
-                break;
-            case UI_PLAY: {
-                const SearchResult *r = &ui.results.item[ui.results.sel];
-                ui_set_status(&ui, "Resolving\xE2\x80\xA6");
-                StreamUrl s;
-                ResolveStatus rs = resolver_resolve(&conf, r->id, &s);
-#ifdef BANANATUBE_MPV
-                if (rs == RESOLVE_OK && player && player_open(player, &s)) {
-                    ui_set_playing(&ui, r->title, r->channel);
-                    ui.dirty = true;
                     break;
                 }
-                if (rs == RESOLVE_OK && !player) rs = RESOLVE_ALL_FAILED;
+                str_copy(history.query, sizeof history.query, ui.query);
+                history_save(&history, hist_path);
+                break;
+            case UI_PLAY: {
+                ui_set_status(&ui, "Resolving\xE2\x80\xA6");
+#ifdef BANANATUBE_MPV
+                if (ui.view == VIEW_HISTORY) {
+                    if (ui.history_sel >= 0 && ui.history_sel < history.count) {
+                        const HistoryItem *it = &history.item[ui.history_sel];
+                        /* carrying on where it stopped: what the watched list is for */
+                        if (start_video(&ui, &conf, player, &history, it->id, it->title, it->channel, it->position))
+                            break;
+                    }
+                } else if (ui.results.count > 0) {
+                    const SearchResult *r = &ui.results.item[ui.results.sel];
+                    const HistoryItem *seen = history_find(&history, r->id);
+                    if (start_video(&ui, &conf, player, &history, r->id, r->title, r->channel,
+                                    seen ? seen->position : 0))
+                        break;
+                }
+                ui_set_status(&ui, player ? "Could not play that." : "No player: build with libmpv.");
+#else
+                ui_set_status(&ui, "No player: build with libmpv.");
 #endif
-                ui_set_status(&ui, resolve_status_text(rs));
                 break;
             }
 #ifdef BANANATUBE_MPV
             case UI_STOP:
+                save_progress(&ui, player, &history, conf_path, true);
                 if (player) player_close(player);
                 ui_set_playing_stopped(&ui, "");
                 break;
             case UI_PAUSE:
                 if (player) player_toggle_pause(player);
+                save_progress(&ui, player, &history, conf_path, true);
                 ui.dirty = true;
                 break;
             case UI_SEEK_BACK:    if (player) player_seek(player, -10.0); break;
             case UI_SEEK_FORWARD: if (player) player_seek(player,  10.0); break;
+            case UI_VOLUME_UP:
+                if (player) { player_set_volume(player, player_volume(player) + 5); ui_set_full_state(&ui, player_volume(player), ui.playing.quality, ui.playing.video_on, player_dropped(player)); }
+                break;
+            case UI_VOLUME_DOWN:
+                if (player) { player_set_volume(player, player_volume(player) - 5); ui_set_full_state(&ui, player_volume(player), ui.playing.quality, ui.playing.video_on, player_dropped(player)); }
+                break;
+            case UI_QUALITY:
+                if (!switch_quality(&ui, &conf, player, &history, conf_path))
+                    ui_set_status(&ui, "Could not change quality.");
+                ui.dirty = true;
+                break;
+            case UI_PREV_VIDEO:
+            case UI_NEXT_VIDEO:
+                if (ui.results.count > 0) {
+                    bool next = (ui_key(&ui, BK_NONE) == UI_NONE);
+                    (void)next;
+                    if (ui.results.sel + 1 < ui.results.count && ui.playing.active) ui.results.sel++;
+                    const SearchResult *r = &ui.results.item[ui.results.sel];
+                    save_progress(&ui, player, &history, conf_path, true);
+                    start_video(&ui, &conf, player, &history, r->id, r->title, r->channel, 0);
+                }
+                break;
+            case UI_SAVE_PROGRESS:
+                save_progress(&ui, player, &history, conf_path, true);
+                break;
 #endif
             case UI_THUMBS:
                 request_visible_thumbs(&ui, &cache, thumbs);
@@ -324,6 +451,31 @@ int main(int argc, char **argv)
                 break;
             }
         }
+
+#ifdef BANANATUBE_MPV
+        /* The lid: with the sound carrying on and the picture off, the video unit stops working with it (which
+         * is what an album with the panels shut wants). bananad still owns going to sleep: if Settings has the
+         * lid set to Sleep, it suspends the device and the sound goes with it, which is the user's choice. */
+        static bool lid_was_closed = false;
+        if (in.lid_closed != lid_was_closed) {
+            lid_was_closed = in.lid_closed;
+            if (player && ui.playing.active && conf.audio_only_on_lid) {
+                player_set_video(player, !in.lid_closed);
+                ui_set_full_state(&ui, player_volume(player), ui.playing.quality, !in.lid_closed,
+                                  player_dropped(player));
+                save_progress(&ui, player, &history, conf_path, true);
+                log_line("lid %s: video %s", in.lid_closed ? "shut" : "open", in.lid_closed ? "off" : "on");
+            }
+        }
+
+        /* every half minute while playing, so a pull of the battery loses at most that */
+        static int64_t last_save = 0;
+        int64_t tick = now_ms();
+        if (player && ui.playing.active && tick - last_save > 30000) {
+            last_save = tick;
+            save_progress(&ui, player, &history, conf_path, true);
+        }
+#endif
 
         /* the workers' answers */
         SearchResult found[RESULTS_MAX];
@@ -400,10 +552,12 @@ int main(int argc, char **argv)
 
     log_line("quitting");
 #ifdef BANANATUBE_MPV
+    save_progress(&ui, player, &history, conf_path, true);
     if (player) { player_destroy(player); player = NULL; }
     osd_free(&osd);
     blit_fini();
 #endif
+    history_save(&history, hist_path);
     tex_free_all(pics, THUMB_MAX_SLOTS);
     thumb_worker_stop(thumbs);
     search_job_stop(search);
@@ -421,7 +575,7 @@ int main(int argc, char **argv)
  * no EGL and no panels (plus: the RG DS Plus's 1024x768 at 1.6),
  * with a made-up set of results. It is how the layout is looked at on a machine that has none, and what a CI
  * run can diff. The pictures are flat colours: no network is involved. */
-static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing)
+static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history)
 {
     AppState ui;
     ui_init(&ui);
@@ -441,9 +595,30 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
     pics[0].pixels = pic_a; pics[0].w = THUMB_W; pics[0].h = THUMB_H;
     pics[1].pixels = pic_b; pics[1].w = THUMB_W; pics[1].h = THUMB_H;
 
+    static History shot_history;
+    if (show_history) {
+        history_clear(&shot_history);
+        const char *t[5] = { "Making a theme for BananaOS, start to finish", "BananaDS runs Golden Sun: Dark Dawn",
+                             "RetroArch shaders on a 1 GB handheld", "The RG DS Plus, one year on",
+                             "Why there is no browser in BananaOS" };
+        const char *c[5] = { "Banana Dev", "ROCKNIX", "Banana Dev", "Retro Game Corps", "Banana Dev" };
+        for (int i = 0; i < 5; i++) {
+            char id[VIDEO_ID_LEN];
+            snprintf(id, sizeof id, "hist%07d", i);
+            history_touch(&shot_history, id, t[i], c[i], 60 * (9 + i * 6) + 30);
+        }
+        history_progress(&shot_history, "hist0000000", 60 * 4 + 12);
+        history_progress(&shot_history, "hist0000001", 60 * 12 + 3);
+        history_progress(&shot_history, "hist0000002", 60 * 20 + 45);
+        ui_set_history(&ui, &shot_history);
+        ui.view = VIEW_HISTORY;
+        ui.history_sel = 1;
+    }
+
     if (playing) {
         ui_set_playing(&ui, "Making a theme for BananaOS, start to finish", "Banana Dev");
         ui_set_playing_state(&ui, 4 * 60 + 12, 12 * 60 + 34, false, false, 854, 480);
+        ui_set_full_state(&ui, 70, 480, true, 0);
         ui.playing.buffering = false;
     } else if (with_results) {
         SearchResult r[8];

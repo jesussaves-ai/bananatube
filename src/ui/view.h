@@ -8,6 +8,7 @@
 
 #include "display/drawlist.h"
 #include "input/keyboard.h"
+#include "history.h"
 #include "net/backend.h"
 #include "net/thumbnail.h"
 #include "ui/results.h"
@@ -20,6 +21,7 @@ typedef enum {
     VIEW_RESULTS = 0,        /* the grid, with the search bar above it */
     VIEW_KEYBOARD,           /* the keyboard over the grid, while a query is typed */
     VIEW_PLAYING,            /* a video is on the top panel: this screen says what and controls it */
+    VIEW_HISTORY,            /* what has been watched, to carry on with one */
 } View;
 
 /* What the top panel is doing, as the bottom screen needs to show it. */
@@ -29,8 +31,25 @@ typedef struct {
     double position, duration;
     int    width, height;
     bool   paused, buffering, active;
+    bool   video_on;         /* off while the lid is shut: the sound carries on without it */
+    int    volume;           /* 0..130, what X/Y and the on-screen buttons move */
+    int    quality;          /* the height being asked for: 360, 480 or 720 */
+    int    dropped;
     char   status[96];       /* why it stopped, or "" */
 } Playing;
+
+/* The transport row's buttons, so a tap can find them. */
+typedef enum {
+    TP_NONE = 0, TP_PREV, TP_PAUSE, TP_NEXT, TP_VOL_DOWN, TP_VOL_UP, TP_QUALITY, TP_STOP,
+} TransportButton;
+
+/* The row's geometry: seven buttons across the screen at TP_Y. One place, so a tap and the drawing cannot
+ * disagree -- they did once, for the result tiles. */
+#define TP_COUNT 7
+#define TP_Y     244
+#define TP_H     42
+void          ui_transport_box(int i, int *x, int *w);
+TransportButton ui_transport_hit(int px, int py);
 
 #define QUERY_MAX 96
 
@@ -43,8 +62,15 @@ typedef enum {
     UI_THUMBS,               /* the visible set changed: fetch what is missing */
     UI_STOP,                 /* B while playing: back to the results */
     UI_PAUSE,                /* START while playing */
-    UI_SEEK_BACK,            /* L2 */
-    UI_SEEK_FORWARD,         /* R2 */
+    UI_SEEK_BACK,            /* L2 or LEFT while playing */
+    UI_SEEK_FORWARD,         /* R2 or RIGHT */
+    UI_VOLUME_UP,            /* UP */
+    UI_VOLUME_DOWN,          /* DOWN */
+    UI_QUALITY,              /* X: 360p -> 480p -> 720p, re-resolved */
+    UI_NEXT_VIDEO,           /* R1 */
+    UI_PREV_VIDEO,           /* L1 */
+    UI_SAVE_PROGRESS,        /* the history wants writing */
+    UI_HISTORY,              /* SELECT on the results: the watched list */
 } UiAction;
 
 typedef struct {
@@ -58,6 +84,9 @@ typedef struct {
     Results  results;
     Keyboard kb;
     Playing  playing;
+    const History *history;      /* the list the history view shows; owned by main.c */
+    int      history_sel;
+    int      history_scroll;
 
     int      view_x, view_y, view_w, view_h;   /* where the grid is drawn (the keyboard shrinks it) */
     float    spin;                             /* the spinner's phase, turned by main.c while a search runs */
@@ -74,6 +103,8 @@ void      ui_set_status(AppState *st, const char *message);
 void      ui_set_playing(AppState *st, const char *title, const char *channel);
 void      ui_set_playing_state(AppState *st, double position, double duration, bool paused, bool buffering,
                                int width, int height);
+void      ui_set_full_state(AppState *st, int volume, int quality, bool video_on, int dropped);
+void      ui_set_history(AppState *st, const History *h);
 void      ui_set_playing_stopped(AppState *st, const char *why);
 
 #endif /* BANANATUBE_VIEW_H */

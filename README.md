@@ -22,7 +22,7 @@ Phase 1 (this repository's first commit) — the skeleton, built and tested:
 | ✅ | `buildroot/package/bananatube` and the launcher `system/run-bananatube` |
 | ✅ | **Phase 2**: the search field and on-screen keyboard, the results grid, and pictures fetched and decoded on background threads |
 | ✅ | **Phase 3**: libmpv rendering the video into the top panel's EGL surface, hard-decoded, with the memory caps in force and an overlay; the bottom screen becomes the player's |
-| ⏳ | Phase 4: scrubbing, the quality switch, history and lid-close audio-only |
+| ✅ | **Phase 4**: a transport row (pause, seek, volume, quality, prev/next, stop) that is tapped or driven by the buttons; a watched list that carries on where it stopped; and audio-only with the lid shut |
 
 On the handheld the bottom panel is the client — type a search with the D-pad or by touch, and the results come
 back as a grid of tiles with their pictures — and the top panel plays the video, decoded by the RK3568's video
@@ -36,7 +36,8 @@ texture.
 | Typing a search | <img src="docs/img/keyboard.png" width="420" alt="The on-screen keyboard: four rows of ten keys and a row of wide keys, with one row of results still visible above"> |
 | The same, on the Plus | <img src="docs/img/results-plus.png" width="420" alt="The results grid at the RG DS Plus's 1024x768, the same layout scaled by 1.6"> |
 | Before a search | <img src="docs/img/first-run.png" width="420" alt="The first screen: a search field and the words Press SELECT to search YouTube"> |
-| Playing a video | <img src="docs/img/playing.png" width="420" alt="While a video plays: its title, the channel, the resolution being decoded, a progress bar and the position, with START pause, L2/R2 to seek and B to stop"> |
+| Playing a video | <img src="docs/img/playing.png" width="420" alt="While a video plays: its title, the channel, the resolution being decoded, the volume, a progress bar and the position, and a row of buttons: previous, volume down, pause, volume up, the quality, next and stop"> |
+| Carrying on | <img src="docs/img/history.png" width="420" alt="The watched list: five videos, each with its channel and how far in it got, the selected one marked"> |
 
 *These are the bottom panel, rendered by the same code the handheld runs — `bananatube --shot` draws the client
 into a buffer with no DRM, no GPU and no network.*
@@ -71,6 +72,7 @@ invisible:
 | `ui` | the grid's geometry and selection, the keyboard, and what each button means |
 | `worker` | the thumbnail queue and the JPEG decode, with the fetch injected: a real JPEG, decoded off the thread |
 | `player` | that libmpv's options *took*: the 16 MiB demuxer cache, no cache, no yt-dlp of its own, no config file — the settings that decide whether a 1 GB handheld survives |
+| `history` | the watched list: it survives a restart, moves an opening video to the front, and keeps a fractional position through the JSON round trip |
 | `keys` `conf` `lru` | the button mapping, the settings file, the picture cache |
 
 They have already paid for themselves: two real bugs (a title arriving as a plain string in the player reply,

@@ -162,8 +162,10 @@ int main(void)
     check_int(st.view, VIEW_RESULTS);
     check_int(st.results.count, 0);
 
-    /* SELECT opens the keyboard, START submits */
-    check_int(ui_key(&st, BK_SELECT), UI_NONE);
+    /* X opens the keyboard (SELECT is the watched list now), START submits */
+    check_int(ui_key(&st, BK_SELECT), UI_NONE);          /* no history yet: nothing to show */
+    check_int(st.view, VIEW_RESULTS);
+    check_int(ui_key(&st, BK_X), UI_NONE);
     check_int(st.view, VIEW_KEYBOARD);
     check_int(ui_key(&st, BK_START), UI_NONE);           /* nothing typed yet */
     str_copy(st.query, sizeof st.query, "banana");
@@ -186,7 +188,7 @@ int main(void)
 
     /* typing in the keyboard view edits the query, and DELETE survives a multi-byte character */
     ui_init(&st);
-    ui_key(&st, BK_SELECT);
+    ui_key(&st, BK_X);
     str_copy(st.query, sizeof st.query, "ab\xC3\xA9");
     ui_key(&st, BK_B);                                   /* deletes the whole é, not half of it */
     check_str(st.query, "ab");
@@ -194,8 +196,57 @@ int main(void)
     /* the views get a height that fits what they draw */
     ui_init(&st);
     check(st.view_h >= TILE_H);
-    ui_key(&st, BK_SELECT);
+    ui_key(&st, BK_X);
     check(st.view_h >= TILE_H);
+
+    /* ---- the transport row ---- */
+    /* the buttons tile the width: no gap at the ends, and every pixel of the row belongs to one of them */
+    int px, pw, last_x = 0, last_w = 0;
+    ui_transport_box(0, &px, &pw);
+    check_int(px, 10);
+    check(pw > 40);                                   /* wide enough to read a word in */
+    ui_transport_box(TP_COUNT - 1, &last_x, &last_w);
+    check_int(last_x + last_w, SCREEN_W - 10);
+    for (int i = 1; i < TP_COUNT; i++) {
+        int x, w;
+        ui_transport_box(i, &x, &w);
+        int prev_x, prev_w;
+        ui_transport_box(i - 1, &prev_x, &prev_w);
+        check(x > prev_x);
+        check_int(x - (prev_x + prev_w), 6);          /* the gap between them */
+    }
+    /* a tap finds the button it is on, and nothing above the row */
+    ui_transport_box(2, &px, &pw);
+    check_int(ui_transport_hit(px + pw / 2, TP_Y + TP_H / 2), TP_PAUSE);
+    check_int(ui_transport_hit(px + pw / 2, TP_Y - 5), TP_NONE);
+    check_int(ui_transport_hit(px + pw / 2, TP_Y + TP_H), TP_NONE);
+    ui_transport_box(5, &px, &pw);
+    check_int(ui_transport_hit(px + 1, TP_Y + 1), TP_NEXT);
+    ui_transport_box(6, &px, &pw);
+    check_int(ui_transport_hit(px + 1, TP_Y + 1), TP_STOP);
+    ui_transport_box(0, &px, &pw);
+    check_int(ui_transport_hit(px + 1, TP_Y + 1), TP_PREV);
+
+    /* ---- what the buttons mean while a video plays ---- */
+    ui_init(&st);
+    str_copy(st.playing.title, sizeof st.playing.title, "A video");
+    st.view = VIEW_PLAYING;
+    check_int(ui_key(&st, BK_LEFT), UI_SEEK_BACK);
+    check_int(ui_key(&st, BK_RIGHT), UI_SEEK_FORWARD);
+    check_int(ui_key(&st, BK_L2), UI_SEEK_BACK);
+    check_int(ui_key(&st, BK_R2), UI_SEEK_FORWARD);
+    check_int(ui_key(&st, BK_UP), UI_VOLUME_UP);
+    check_int(ui_key(&st, BK_DOWN), UI_VOLUME_DOWN);
+    check_int(ui_key(&st, BK_X), UI_QUALITY);
+    check_int(ui_key(&st, BK_L1), UI_PREV_VIDEO);
+    check_int(ui_key(&st, BK_R1), UI_NEXT_VIDEO);
+    check_int(ui_key(&st, BK_START), UI_PAUSE);
+    check_int(ui_key(&st, BK_B), UI_STOP);
+    check_int(ui_key(&st, BK_HOME), UI_QUIT);
+    /* stopping goes back to the results */
+    ui_set_playing_stopped(&st, "Stopped.");
+    check_int(st.view, VIEW_RESULTS);
+    check_str(st.playing.status, "Stopped.");
 
     /* ---- the small formatters ---- */
     char buf[32];

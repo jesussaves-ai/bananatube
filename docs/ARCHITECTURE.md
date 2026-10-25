@@ -182,13 +182,43 @@ had to drop — and it is only re-uploaded when what it says changes, so an idle
    coordinates in the vertex shader to match; if the bar comes out upside-down on the panel, one of the two is
    the wrong way round.
 
-## 7. Memory
+## 7. The player, history and the lid (Phase 4)
+
+**The transport row** is seven buttons across the bottom screen (previous, volume down, pause, volume up, the
+quality, next, stop). `ui_transport_box()` is the one place its geometry lives, so a tap and the drawing cannot
+disagree — they did once, for the result tiles, and `tests/test_ui.c` now checks both.
+
+**Seeking** is relative (`LEFT`/`RIGHT` or `L2`/`R2`, ±10 s), **volume** is `UP`/`DOWN` (mpv's own volume,
+which bananad's mixer then rides), **previous/next** walk the result list and start that video, and **X** cycles
+the quality: 360p → 480p → 720p → 360p. Changing quality means re-resolving at the new size and reloading at the
+same position, which is the only honest way to do it mid-stream; it is also written to `bananatube.conf`, so the
+choice is what the next video gets.
+
+**The watched list** is `banana/bananatube-history.json`: at most 50 entries, most recent first, each with where
+it got to, plus the last search so a restart is not a blank screen. JSON rather than SQLite because the data is
+a few kilobytes, cJSON is already here, and a file that can be read on a computer is worth more on a handheld
+than a query language. It is written on a pause, a stop, a switch and an exit, and every 30 s while playing, so
+pulling the battery loses at most half a minute. `SELECT` on the results screen opens it; `A` carries on from
+where it stopped.
+
+**The lid.** banana-tube reads `SW_LID` itself (evdev). When the lid shuts and `audio_only_on_lid` is on, mpv is
+told `vid=no`: the video unit stops working, the sound carries on, and the top panel is left alone (bananad has
+already turned the backlights off). Opening it puts the picture back.
+
+That interacts with a setting on the other side of the system, and the two must agree: **Settings ▸ Sleep &
+power ▸ Closing the lid**. Set to *Sleep* (the default), bananad suspends the device when the lid shuts — and a
+suspended SoC plays nothing, so the audio stops there and the sound comes back from where it left off on waking.
+Set to *Nothing*, the device stays awake and this is what happens instead. Both are reasonable; they are just
+different, and the plan's "audio with the lid shut" only means anything with the second.
+
+## 8. Memory
 
 | | |
 |---|---|
 | libmpv + ffmpeg (no cache) | 35–45 MB |
 | Decoded frames (hardware DMABUFs) | 8–12 MB |
 | Result pictures, 12 slots at up to 320x180 RGB565 (plus the ones being fetched) | ~1.5 MB — ordinary memory, not VRAM |
+| The overlay's texture, and the OSD buffer | ~0.3 MB |
 | EGL/GBM surfaces, top panel (2x 1024x768) | 6–8 MB |
 | Bottom panel dumb buffers (2x 640x480) | 3 MB |
 | Draw lists, glyph cache, curl buffers | 3–4 MB |
@@ -203,14 +233,14 @@ The thumbnail cache is a fixed number of slots (`cache_size`, 12 by default) wit
 screenful resident, and the least recently drawn slot is the one reused. Pictures are decoded by libjpeg with
 `scale_denom` set to 1/2, 1/4 or 1/8, so the scaling happens during the decode instead of on the CPU afterwards.
 
-## 8. Phases
+## 9. Phases
 
 | | |
 |---|---|
 | **1. Both panels** | DRM, GBM/EGL, dumb buffers, the damage-diffing renderer, evdev, FreeType, the handover. **Done** — see the README's status table. |
 | **2. The bottom screen** | **Done.** The search field, the keyboard, the results grid, and the background thumbnail fetcher and decoder (`net/thumbworker.c`), blitted by the CPU renderer. |
 | **3. Video on the top screen** | **Done.** `player/player.c` and `player/osd.c` render through `mpv_render_context` into the existing EGL surface, with the caps in force; the bottom screen becomes the player's (pause, seek, stop). The decoder measurement is the one thing left for the device. |
-| **4. Transport and persistence** | Scrubbing, the quality switch, history (SQLite, which BananaOS already carries) and lid-close audio-only. |
+| **4. Transport and persistence** | **Done.** The transport row, the quality switch, the watched list (JSON, not SQLite: a few kilobytes do not need a database), and audio-only with the lid shut. |
 
 Phase 1 was first because it is the risky one: it touches the same display path banana-ui and BananaDS use, and it
 has to coexist with bananad's handover. With both panels lighting up from one process, everything after it is an
