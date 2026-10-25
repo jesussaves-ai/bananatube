@@ -208,6 +208,28 @@ static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hi
 }
 #endif
 
+/* What this program costs and what the device has left. On a 1 GB handheld a frame that takes 200 ms may
+ * have nothing to do with drawing: the log has to be able to say which, or the next guess is just as blind. */
+static void log_memory(const char *when)
+{
+    long rss = 0, avail = 0;
+    FILE *f = fopen("/proc/self/status", "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof line, f))
+            if (sscanf(line, "VmRSS: %ld kB", &rss) == 1) break;
+        fclose(f);
+    }
+    f = fopen("/proc/meminfo", "r");
+    if (f) {
+        char line[256];
+        while (fgets(line, sizeof line, f))
+            if (sscanf(line, "MemAvailable: %ld kB", &avail) == 1) break;
+        fclose(f);
+    }
+    log_line("memory (%s): bananatube %ld kB resident, %ld kB left on the device", when, rss, avail);
+}
+
 int main(int argc, char **argv)
 {
     signal(SIGUSR1, on_usr1);
@@ -276,6 +298,8 @@ int main(int argc, char **argv)
     bottom_set_font(&bottom, fnt);
 
 #ifdef BANANATUBE_MPV
+    log_memory("at startup");
+
     /* The player renders into the top panel's EGL context, which gbm_egl_init left current on this thread. */
     PlayerGl pgl = {
         .egl_display = egl.egl_display,
@@ -495,6 +519,8 @@ int main(int argc, char **argv)
 
         int64_t now = now_ms();
         if (now - last_clock > 1000) { last_clock = now; dirty = true; }
+        static int64_t last_mem = 0;
+        if (now - last_mem > 60000) { last_mem = now; log_memory("a minute in"); }
         if (ui.searching && now - last_spin > 100) {         /* the spinner keeps turning */
             last_spin = now;
             ui.spin += 1.0f / 8.0f;
@@ -534,8 +560,11 @@ int main(int argc, char **argv)
 #endif
 
         if (dirty) {
+            int64_t t0 = now_ms();
             ui_draw(&ui, &dl, pics, THUMB_MAX_SLOTS);
+            int64_t t1 = now_ms();
             bottom_present(&bottom, fd, &bot, &dl, pics, THUMB_MAX_SLOTS, (float)bot.w / SCREEN_W);
+            int64_t t2 = now_ms();
 
             /* With no video, the top panel is a dark placeholder: a slow pulse, so it is obvious which panel is
              * which and that the app is alive. */
@@ -543,12 +572,24 @@ int main(int argc, char **argv)
             if (!(player && player_active(player)))
 #endif
             {
+                /* Visible on purpose. The old range (0.045-0.06) is about 11/255: a panel that is working
+                 * but reads as switched off, which is how it was first reported from the handheld. */
                 float p = (float)((now / 40) % 60) / 60.0f;
-                float k = 0.045f + 0.015f * p;
+                float k = 0.10f + 0.05f * p;
                 glClearColor(k * 0.9f, k, k * 1.25f, 1.0f);
                 glClear(GL_COLOR_BUFFER_BIT);
                 gbm_egl_swap(fd, &egl);
             }
+
+            /* A frame that takes a noticeable time, with what it did: how much was drawn, how many separate
+             * rectangles were repainted and how many pixels that was (the copy into the uncached scanout
+             * buffer is the only slow memory in the path, so the pixel count is the number that matters). */
+            int64_t t3 = now_ms();
+            if (t3 - t0 > 30)
+                log_line("frame: %lld ms (list %lld, bottom %lld, top %lld) -- %d draws, %d damage rects, "
+                         "%ld px repainted of %d", (long long)(t3 - t0), (long long)(t1 - t0),
+                         (long long)(t2 - t1), (long long)(t3 - t2), bottom.last_draws, bottom.last_damage,
+                         bottom.last_pixels, bot.w * bot.h);
 
             dirty = false;
         }

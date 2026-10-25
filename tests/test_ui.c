@@ -162,10 +162,9 @@ int main(void)
     check_int(st.view, VIEW_RESULTS);
     check_int(st.results.count, 0);
 
-    /* X opens the keyboard (SELECT is the watched list now), START submits */
-    check_int(ui_key(&st, BK_SELECT), UI_NONE);          /* no history yet: nothing to show */
-    check_int(st.view, VIEW_RESULTS);
-    check_int(ui_key(&st, BK_X), UI_NONE);
+    /* SELECT opens the keyboard -- the key the on-screen hints and the README name -- and X does too, since
+     * the keyboard itself uses X for capitals */
+    check_int(ui_key(&st, BK_SELECT), UI_NONE);
     check_int(st.view, VIEW_KEYBOARD);
     check_int(ui_key(&st, BK_START), UI_NONE);           /* nothing typed yet */
     str_copy(st.query, sizeof st.query, "banana");
@@ -179,11 +178,18 @@ int main(void)
     check_int(ui_key(&st, BK_RIGHT), UI_THUMBS);
     check_int(st.results.sel, 1);
     check_int(ui_key(&st, BK_A), UI_PLAY);
-    /* B clears the results, and B again leaves */
+
+    /* the watched list is on Y, and with nothing watched at all it leaves the view alone */
+    check_int(ui_key(&st, BK_Y), UI_NONE);
+    check_int(st.view, VIEW_RESULTS);
+
+    /* B clears the results -- and with an empty list it does nothing at all. It used to quit there, which is
+     * a "back"/"cancel" press in the state the app starts in: on the handheld that read as a crash. HOME is
+     * the only key that leaves, and it leaves from every view. */
     check_int(ui_key(&st, BK_B), UI_NONE);
     check_int(st.results.count, 0);
-    check_int(ui_key(&st, BK_B), UI_QUIT);
-    /* HOME always leaves */
+    check_int(ui_key(&st, BK_B), UI_NONE);
+    check_int(st.view, VIEW_RESULTS);
     check_int(ui_key(&st, BK_HOME), UI_QUIT);
 
     /* typing in the keyboard view edits the query, and DELETE survives a multi-byte character */

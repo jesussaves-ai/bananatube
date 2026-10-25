@@ -228,8 +228,8 @@ UiAction ui_key(AppState *st, BananaKey key)
             return UI_NONE;
         default:
             if (a == KB_ACTION_NONE) {
-                /* the D-pad only moves the cursor: nothing on screen changed unless it did */
-                st->dirty = true;
+                /* D-pad movement and a key the keyboard has no use for changed nothing on screen, so they
+                 * must not mark the frame dirty either: that rebuilds the whole draw list for nothing. */
                 return UI_NONE;
             }
             return UI_NONE;
@@ -238,20 +238,20 @@ UiAction ui_key(AppState *st, BananaKey key)
 
     /* the results view */
     switch (key) {
-    case BK_SELECT:
+    case BK_SELECT:                          /* search: SELECT is the key the hints and the README name */
+    case BK_X:                               /* and X as well, since the keyboard uses it for capitals */
+        st->view = VIEW_KEYBOARD;
+        kb_reset(&st->kb);
+        layout(st);
+        st->dirty = true;
+        return UI_NONE;
+    case BK_Y:                               /* the watched list (SELECT searched before it existed) */
         if (st->history && st->history->count > 0) {
             st->view = VIEW_HISTORY;
             st->history_sel = 0;
             layout(st);
             st->dirty = true;
-            return UI_NONE;
         }
-        return UI_NONE;
-    case BK_X:
-        st->view = VIEW_KEYBOARD;            /* search: the keyboard, and SELECT is the watched list */
-        kb_reset(&st->kb);
-        layout(st);
-        st->dirty = true;
         return UI_NONE;
     case BK_A:
         if (st->results.count) return UI_PLAY;
@@ -259,12 +259,15 @@ UiAction ui_key(AppState *st, BananaKey key)
         st->dirty = true;
         return UI_NONE;
     case BK_B:
+        /* Only ever clears. It used to quit when the list was empty, which is the state the app starts in and
+         * the state after a search that found nothing: pressing back there ended the app, which is
+         * indistinguishable from a crash. HOME is the only key that quits. */
         if (st->results.count) {
             results_clear(&st->results);
             ui_set_status(st, "SELECT searches");
-            return UI_NONE;
+            st->dirty = true;
         }
-        return UI_QUIT;
+        return UI_NONE;
     case BK_LEFT: case BK_RIGHT: case BK_UP: case BK_DOWN: {
         if (!results_move(&st->results, key)) return UI_NONE;
         results_scroll_into_view(&st->results, st->view_h);
@@ -336,8 +339,8 @@ static void draw_hints(AppState *st, DrawList *dl)
         x += widget_hint(dl, t, x, y, BK_START, "search", true) + 12;
     } else {
         x += widget_hint(dl, t, x, y, BK_A, "play", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_X, "search", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_SELECT, "history", false) + 12;
+        x += widget_hint(dl, t, x, y, BK_SELECT, "search", true) + 12;
+        x += widget_hint(dl, t, x, y, BK_Y, "watched", false) + 12;
         x += widget_hint(dl, t, x, y, BK_B, "clear", false) + 12;
     }
     /* the status only where there is room for it: the keyboard's hints fill the row, and a message drawn

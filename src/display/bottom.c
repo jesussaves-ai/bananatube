@@ -37,8 +37,12 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
                     const BottomTex *tex, int tex_n, float scale)
 {
     Damage dmg;
+    long painted = 0;
     dl_diff(&b->prev, dl, &dmg);
-    if (b->have_prev && damage_empty(&dmg)) return;      /* nothing changed: the panel keeps its pixels */
+    if (b->have_prev && damage_empty(&dmg)) {
+        b->last_pixels = 0;
+        return;                                          /* nothing changed: the panel keeps its pixels */
+    }
 
     if (scale <= 0) scale = 1.0f;                        /* 1.0 on the RG DS, 1.6 on the RG DS Plus */
 
@@ -55,10 +59,12 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
         RenderCanvas rc = { b->canvas, b->w, b->h, b->font };
         fill_rect_black(&rc, dx, dy, dw, dh);
         render_ops(b->canvas, b->w, b->h, b->font, dl, tex, tex_n, scale, dx, dy, dw, dh);
+        painted += (long)dw * dh;
     }
 
     b->last_damage = dmg.n;
     b->last_draws = dl->n;
+    b->last_pixels = painted;
 
     /* Copy the damaged rectangles into the spare scanout buffer and flip to it. */
     DumbBuf *dst = &b->buf[(b->page + 1) % 2];

@@ -219,7 +219,7 @@ begin with), clamped to `HISTORY_MAX` because the file is an array — a value t
 rather than obeyed, and the entries that no longer fit fall off the end. JSON rather than SQLite because the data is
 a few kilobytes, cJSON is already here, and a file that can be read on a computer is worth more on a handheld
 than a query language. It is written on a pause, a stop, a switch and an exit, and every 30 s while playing, so
-pulling the battery loses at most half a minute. `SELECT` on the results screen opens it; `A` carries on from
+pulling the battery loses at most half a minute. `Y` on the results screen opens it; `A` carries on from
 where it stopped.
 
 **The lid.** banana-tube reads `SW_LID` itself (evdev). When the lid shuts and `audio_only_on_lid` is on, mpv is

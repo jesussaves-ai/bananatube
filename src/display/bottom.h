@@ -25,6 +25,7 @@ typedef struct {
     bool      have_prev;
     /* what the last frame cost, for the log and the benchmark */
     int       last_damage, last_draws;
+    long      last_pixels;     /* how many pixels were repainted and copied to the panel */
 } Bottom;
 
 bool bottom_init(Bottom *b, int fd, const DrmPanel *p);

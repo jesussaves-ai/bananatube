@@ -97,7 +97,7 @@ panel with a live `banana-ui` is a DRM handover problem worth a log.
 
 | | |
 |---|---|
-| It fills in | Play something for a few seconds, stop, press SELECT: the video should be there with roughly the
+| It fills in | Play something for a few seconds, stop, press Y: the video should be there with roughly the
 right position. |
 | It carries on | Open it from the list: it should resume where it stopped, not from the beginning. |
 | It survives a restart | Exit the client (HOME), open it again: the list is still there, and the last search is
@@ -136,6 +136,27 @@ Send me:
 - the overlay's drop count if it is a stutter
 - which of the two panels, and which panel size, if it is a drawing problem — the RG DS and the Plus scale
   differently, and that is where scaling bugs hide
+
+## What the first run on the hardware found
+
+Recorded because none of it is visible from a desktop, and each one cost a build:
+
+1. **EGL never came up.** `gbm_egl_init` created the GBM surface in `XRGB8888` *before* choosing an EGL config,
+   so when the config it then picked had a different `EGL_NATIVE_VISUAL_ID` the two disagreed and
+   `eglCreateWindowSurface` returned `EGL_BAD_MATCH` — which reads as "no EGL on the top panel". The RK3568
+   also has **two DRM devices** (the `rockchip` display controller and a separate `panfrost` GPU card), which
+   Mesa bridges with kmsro. See `docs/ARCHITECTURE.md` §2.
+2. **SELECT did not search.** It opened the watched list, and with nothing watched yet it did *nothing at all*,
+   while every word of the app's own interface and the README said SELECT searches. The keyboard is on SELECT
+   again; the watched list moved to Y.
+3. **B quit the app.** From the results screen with an empty list — the state the app starts in, and the state
+   after a search that found nothing — `B` returned `UI_QUIT`. A back/cancel press there ended the program,
+   which on a handheld is indistinguishable from a crash, and is how it was first reported. B now only ever
+   clears; HOME is the only key that leaves. `tests/test_ui.c` had been asserting the old behaviour.
+4. **The idle top panel looked dead.** With nothing playing it is a placeholder whose brightness was about
+   11/255 — a working panel that reads as switched off. It is visible now, and the layout is what it is: the
+   **video on the top panel, the browsing UI on the bottom one** (the bottom is the touchscreen, so the UI has
+   to be there for a finger to reach it).
 
 ## Known unknowns, in order of how likely they are to need a change
 
