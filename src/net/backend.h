@@ -75,8 +75,10 @@ typedef enum {
 
 const char *resolve_status_text(ResolveStatus s);
 
-/* A backend's three calls. search returns how many results it wrote (0 on failure); detail and resolve
- * return 0 on success. */
+/* A backend's three calls. search returns how many results it wrote, -1 when it could not reach anything at
+ * all (no DNS, no route, every instance refusing) -- the difference between that and 0 ("it answered, there is
+ * nothing") is the difference between "your Wi-Fi is off" and "nothing matched", and only the backend knows
+ * which it was. detail and resolve return 0 on success. */
 typedef struct {
     const char *name;
     int (*search)(const Conf *c, const char *query, SearchResult *out, int max);

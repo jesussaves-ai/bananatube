@@ -109,7 +109,12 @@ static void walk_video_renderers(const cJSON *node, SearchResult *out, int max, 
 {
     if (!node || *n >= max) return;
     if (cJSON_IsObject(node)) {
+        /* Both shapes, because which one arrives is the client's business and it changed: the Android VR
+         * client answers a search with compactVideoRenderer (the compact, mobile-looking layout) and the
+         * parser looked only for videoRenderer, so a 200 with nineteen videos in it produced zero results.
+         * The fields read below are the same in both. */
         const cJSON *vr = cJSON_GetObjectItemCaseSensitive(node, "videoRenderer");
+        if (!cJSON_IsObject(vr)) vr = cJSON_GetObjectItemCaseSensitive(node, "compactVideoRenderer");
         if (cJSON_IsObject(vr)) {
             SearchResult *s = &out[*n];
             memset(s, 0, sizeof *s);
@@ -144,11 +149,15 @@ static int innertube_search(const Conf *c, const char *query, SearchResult *out,
 
     HttpResponse r;
     if (!http_post_json(url, body, c->search_timeout_ms, &r)) {
-        log_line("innertube: search failed: %s", http_error(&r));
+        log_line("innertube: %s", http_error(&r));
         http_response_free(&r);
-        return 0;
+        return -1;                     /* not reachable, which is not the same as nothing found */
     }
     int n = innertube_parse_search(r.data ? r.data : "", out, max);
+    if (n == 0)
+        log_line("innertube: answered with no results (%ld bytes, HTTP %ld)", (long)r.len, r.status);
+    else
+        log_line("innertube: %d results", n);
     http_response_free(&r);
     return n;
 }

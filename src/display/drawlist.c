@@ -122,6 +122,7 @@ bool op_equal(const DrawOp *a, const DrawOp *b)
 void dl_reset(DrawList *dl)
 {
     dl->n = 0;
+    dl->dropped = 0;
     dl->depth = 0;
     dl->cx = 0; dl->cy = 0; dl->cw = SCREEN_W; dl->ch = SCREEN_H;
 }
@@ -152,7 +153,7 @@ void dl_pop_clip(DrawList *dl)
 
 DrawOp *dl_push(DrawList *dl, OpKind kind)
 {
-    if (dl->n >= DRAW_MAX) return NULL;
+    if (dl->n >= DRAW_MAX) { dl->dropped++; return NULL; }
     DrawOp *op = &dl->op[dl->n++];
     memset(op, 0, sizeof *op);
     op->kind = kind;

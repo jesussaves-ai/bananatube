@@ -65,7 +65,12 @@ static const char *first_font(const char *env_name, const char *device, const ch
 #define CONF_PATH_DEFAULT "/data/banana/bananatube.conf"
 
 /* the headless picture of the bottom screen, defined at the end of this file */
-static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history);
+/* Which of the two panels a shot is of. The app draws the same view onto whichever one it belongs to, so a
+ * picture has to say which -- and "both" is the pair stacked, the way the two screens sit on the handheld. */
+typedef enum { SHOT_VIEW = 0, SHOT_TOP, SHOT_BOTTOM, SHOT_BOTH } ShotPanel;
+
+static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history,
+                ShotPanel panel);
 
 /* ---- the pictures ---------------------------------------------------------------------------------------
  * One slot per thumbnail, in ordinary memory: the bottom panel is drawn by the CPU, so a decoded picture is a
@@ -247,14 +252,18 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--shot") == 0) {
         const char *out = argc > 2 ? argv[2] : "/tmp/bananatube.ppm";
         bool kb = false, empty = false, plus = false, playing = false, history = false;
+        ShotPanel panel = SHOT_VIEW;                 /* whichever panel carries this view's content */
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "keyboard") == 0) kb = true;
             else if (strcmp(argv[i], "empty") == 0) empty = true;
             else if (strcmp(argv[i], "plus") == 0) plus = true;
             else if (strcmp(argv[i], "playing") == 0) playing = true;
             else if (strcmp(argv[i], "history") == 0) history = true;
+            else if (strcmp(argv[i], "top") == 0) panel = SHOT_TOP;
+            else if (strcmp(argv[i], "bottom") == 0) panel = SHOT_BOTTOM;
+            else if (strcmp(argv[i], "both") == 0) panel = SHOT_BOTH;
         }
-        return shot(out, kb, !empty, plus, playing, history);
+        return shot(out, kb, !empty, plus, playing, history, panel);
     }
 
     Conf conf;
@@ -288,14 +297,23 @@ int main(int argc, char **argv)
     GbmEgl egl;
     if (!gbm_egl_init(fd, &top, &egl)) { log_line("no EGL on the top panel"); drm_close(fd); return 1; }
 
-    Bottom bottom;
-    if (!bottom_init(&bottom, fd, &bot)) { log_line("no bottom-screen buffers"); drm_close(fd); return 1; }
+    /* Both panels are drawn by the CPU here: the top one carries the app's content (the results, or, once a
+     * video plays, mpv's frames through EGL), the bottom one the controls. Two of the same thing, because the
+     * top panel is a dumb buffer while browsing and an EGL surface while playing, and only one of them owns
+     * the CRTC at a time. */
+    Bottom top_ui, bot_ui;
+    if (!bottom_init(&top_ui, fd, &top) || !bottom_init(&bot_ui, fd, &bot)) {
+        log_line("no screen buffers");
+        drm_close(fd);
+        return 1;
+    }
 
     FontCtx *fnt = font_init(first_font("BANANATUBE_FONTS", TTF_TITLE, "banana/fonts/Inter-Regular.ttf"),
                              first_font("BANANATUBE_FONTS", TTF_BOLD, "banana/fonts/Inter-SemiBold.ttf"),
                              first_font("BANANATUBE_FONTS", TTF_PIXEL, "rnds/fonts/PixelifySans-Medium.ttf"));
     if (!fnt) log_line("no fonts: the bottom screen will have no text");
-    bottom_set_font(&bottom, fnt);
+    bottom_set_font(&top_ui, fnt);
+    bottom_set_font(&bot_ui, fnt);
 
 #ifdef BANANATUBE_MPV
     log_memory("at startup");
@@ -346,8 +364,7 @@ int main(int argc, char **argv)
     struct pollfd pfds[1 + INPUT_MAX_DEV];
     KeyEvent keys[INPUT_EVENTS_MAX];
     TouchEvent touch = { 0 };
-    DrawList dl;
-    dl_reset(&dl);
+    DrawList dl_top, dl_bot;        /* ui_draw_top/_bot clear the list they are given */
 
     int64_t last_spin = 0;
     int64_t last_clock = 0;
@@ -373,26 +390,46 @@ int main(int argc, char **argv)
 
         int nk = input_dispatch(&in, pfds + 1, keys, INPUT_EVENTS_MAX, &touch);
 
-        /* a tap: the keyboard's keys, or a tile */
+        /* A tap becomes the same key presses a button makes, so one place decides what a key means -- and so
+         * the actions those keys raise actually run. The old path called ui_key() for the keyboard's SEARCH key
+         * and threw the UI_SEARCH it returned away, which is why tapping Search did nothing at all.
+         *
+         * The keyboard's letters are not keys, and DELETE and the layer switch keep their own handling (they
+         * raise nothing), so only SUBMIT and CLOSE become key presses here. */
         if (touch.down && ui.view == VIEW_KEYBOARD) {
             char ch[8] = "";
             size_t room = sizeof ui.query - strlen(ui.query) - 1;
+            BananaKey tapped = BK_NONE;
             switch (kb_tap(&ui.kb, touch.x, touch.y, ch, sizeof ch)) {
             case KB_ACTION_CHAR:   if (room >= strlen(ch)) strncat(ui.query, ch, room); ui.dirty = true; break;
             case KB_ACTION_SPACE:  if (room >= 1) strncat(ui.query, " ", room); ui.dirty = true; break;
-            case KB_ACTION_DELETE: ui_key(&ui, BK_B); break;
+            case KB_ACTION_DELETE: ui_key(&ui, BK_B); break;      /* its own path: whole characters, not bytes */
             case KB_ACTION_LAYER:  ui_key(&ui, BK_X); break;
-            case KB_ACTION_SUBMIT: ui_key(&ui, BK_START); break;
-            case KB_ACTION_CLOSE:  ui_key(&ui, BK_SELECT); break;
-            default:               ui.dirty = true; break;
+            case KB_ACTION_SUBMIT: tapped = BK_START; break;
+            case KB_ACTION_CLOSE:  tapped = BK_SELECT; break;
+            default: break;
             }
-        } else if (touch.down && ui.view == VIEW_RESULTS) {
-            int hit = results_hit(&ui.results, ui.view_h, ui.view_x, ui.view_y, ui.view_w, touch.x, touch.y);
-            if (hit >= 0) {
-                while (ui.results.sel != hit && results_move(&ui.results, hit > ui.results.sel ? BK_RIGHT : BK_LEFT)) {}
-                /* a tap on the selected tile opens it, as tapping a list item twice does in the menu */
-                if (hit == ui.results.sel) { ui.dirty = true; ui_key(&ui, BK_A); }
-                results_scroll_into_view(&ui.results, ui.view_h);
+            if (tapped != BK_NONE && nk < INPUT_EVENTS_MAX) {
+                keys[nk].key = tapped; keys[nk].down = true; keys[nk].repeat = false;
+                nk++;
+            }
+        } else if (touch.down && ui.view == VIEW_PLAYING) {
+            /* The transport row is on the panel with the touchscreen, which is the whole reason the controls
+             * are down there -- and until now it was drawn but not actually reachable by finger. */
+            BananaKey tapped = BK_NONE;
+            switch (ui_transport_hit(touch.x, touch.y)) {
+            case TP_PREV:     tapped = BK_L1;    break;
+            case TP_NEXT:     tapped = BK_R1;    break;
+            case TP_PAUSE:    tapped = BK_START; break;
+            case TP_VOL_DOWN: tapped = BK_DOWN;  break;
+            case TP_VOL_UP:   tapped = BK_UP;    break;
+            case TP_QUALITY:  tapped = BK_X;     break;
+            case TP_STOP:     tapped = BK_B;     break;
+            default: break;
+            }
+            if (tapped != BK_NONE && nk < INPUT_EVENTS_MAX) {
+                keys[nk].key = tapped; keys[nk].down = true; keys[nk].repeat = false;
+                nk++;
             }
         }
 
@@ -561,35 +598,49 @@ int main(int argc, char **argv)
 
         if (dirty) {
             int64_t t0 = now_ms();
-            ui_draw(&ui, &dl, pics, THUMB_MAX_SLOTS);
+            ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+            ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
             int64_t t1 = now_ms();
-            bottom_present(&bottom, fd, &bot, &dl, pics, THUMB_MAX_SLOTS, (float)bot.w / SCREEN_W);
-            int64_t t2 = now_ms();
 
-            /* With no video, the top panel is a dark placeholder: a slow pulse, so it is obvious which panel is
-             * which and that the app is alive. */
+            bool video = false;
 #ifdef BANANATUBE_MPV
-            if (!(player && player_active(player)))
+            video = player && player_active(player);
 #endif
-            {
-                /* Visible on purpose. The old range (0.045-0.06) is about 11/255: a panel that is working
-                 * but reads as switched off, which is how it was first reported from the handheld. */
-                float p = (float)((now / 40) % 60) / 60.0f;
-                float k = 0.10f + 0.05f * p;
-                glClearColor(k * 0.9f, k, k * 1.25f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT);
-                gbm_egl_swap(fd, &egl);
+            /* Who owns the top panel changed (the video started or stopped), so its damage diff is worthless:
+             * the panel would otherwise keep mpv's last frame under the results, or the results under the
+             * video, because the list it compares against is the one from the other mode. */
+            static bool top_was_video = false;
+            if (video != top_was_video) {
+                bottom_invalidate(&top_ui);
+                top_was_video = video;
+                log_line("top panel: %s", video ? "the video" : "the screen");
+            }
+            if (!video)
+                bottom_present(&top_ui, fd, &top, &dl_top, pics, THUMB_MAX_SLOTS, (float)top.w / SCREEN_W);
+            int64_t t2 = now_ms();
+            bottom_present(&bot_ui, fd, &bot, &dl_bot, pics, THUMB_MAX_SLOTS, (float)bot.w / SCREEN_W);
+            int64_t t3 = now_ms();
+
+            /* A frame that does not fit drops its tail draws. It looks like a half-drawn screen, and it is
+             * worth a line rather than silence. */
+            static int last_dropped = 0;
+            int dropped = dl_top.dropped + dl_bot.dropped;
+            if (dropped != last_dropped) {
+                last_dropped = dropped;
+                log_line("frame: %d draws did not fit in %d (DRAW_MAX): the tail of the frame was dropped",
+                         dropped, DRAW_MAX);
             }
 
             /* A frame that takes a noticeable time, with what it did: how much was drawn, how many separate
              * rectangles were repainted and how many pixels that was (the copy into the uncached scanout
              * buffer is the only slow memory in the path, so the pixel count is the number that matters). */
-            int64_t t3 = now_ms();
-            if (t3 - t0 > 30)
-                log_line("frame: %lld ms (list %lld, bottom %lld, top %lld) -- %d draws, %d damage rects, "
-                         "%ld px repainted of %d", (long long)(t3 - t0), (long long)(t1 - t0),
-                         (long long)(t2 - t1), (long long)(t3 - t2), bottom.last_draws, bottom.last_damage,
-                         bottom.last_pixels, bot.w * bot.h);
+            int64_t t4 = now_ms();
+            if (t4 - t0 > 30)
+                log_line("frame: %lld ms (lists %lld, top %lld, bottom %lld) -- %d+%d draws, "
+                         "%d+%d damage rects, %ld+%ld px repainted of %d+%d", (long long)(t4 - t0),
+                         (long long)(t1 - t0), (long long)(t2 - t1), (long long)(t3 - t2),
+                         dl_top.n, dl_bot.n, top_ui.last_damage, bot_ui.last_damage,
+                         top_ui.last_pixels, bot_ui.last_pixels, top.w * top.h, bot.w * bot.h);
 
             dirty = false;
         }
@@ -607,7 +658,8 @@ int main(int argc, char **argv)
     thumb_worker_stop(thumbs);
     search_job_stop(search);
     input_close(&in);
-    bottom_fini(&bottom, fd);
+    bottom_fini(&top_ui, fd);
+    bottom_fini(&bot_ui, fd);
     gbm_egl_fini(&egl);
     font_free(fnt);
     drmDropMaster(fd);
@@ -620,7 +672,8 @@ int main(int argc, char **argv)
  * no EGL and no panels (plus: the RG DS Plus's 1024x768 at 1.6),
  * with a made-up set of results. It is how the layout is looked at on a machine that has none, and what a CI
  * run can diff. The pictures are flat colours: no network is involved. */
-static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history)
+static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history,
+                ShotPanel panel)
 {
     AppState ui;
     ui_init(&ui);
@@ -696,16 +749,22 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
         results_scroll_into_view(&ui.results, ui.view_h);
     }
 
-    DrawList dl;
-    dl_reset(&dl);
-    ui_draw(&ui, &dl, pics, THUMB_MAX_SLOTS);
+    /* Both panels' lists are built, then whichever was asked for is rendered. The content is on the top panel
+     * (the search, the results, the video) and the controls on the bottom one (the keyboard, the transport). */
+    DrawList dl_top, dl_bot;
+    ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+    ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+
+    bool want_top = (panel == SHOT_TOP || panel == SHOT_BOTH ||
+                     (panel == SHOT_VIEW && ui.view != VIEW_KEYBOARD && ui.view != VIEW_PLAYING));
+    bool want_bot = (panel == SHOT_BOTTOM || panel == SHOT_BOTH || !want_top);
 
     if (getenv("BANANATUBE_DUMP")) {
         const char *kind[] = { "rect", "text", "image" };
-        for (int i = 0; i < dl.n; i++) {
-            const DrawOp *op = &dl.op[i];
+        for (int i = 0; i < dl_top.n; i++) {
+            const DrawOp *op = &dl_top.op[i];
             if (op->kind == OP_IMAGE || (op->kind == OP_TEXT && i < 30))
-                printf("op %3d %-5s box %4d,%4d %3dx%3d image %2d fit %d text \"%s\"\n",
+                printf("top %3d %-5s box %4d,%4d %3dx%3d image %2d fit %d text \"%s\"\n",
                        i, kind[op->kind], op->x, op->y, op->w, op->h, op->image, op->fit, op->text);
         }
     }
@@ -719,19 +778,22 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
     int w = SCREEN_W, h = SCREEN_H;
     float scale = 1.0f;
     if (plus) { w = 1024; h = 768; scale = 1.6f; }
-    uint32_t *canvas = calloc((size_t)w * h, sizeof(uint32_t));
+    int stack = (want_top && want_bot) ? 2 : 1;           /* both: stacked the way the two screens sit */
+    uint32_t *canvas = calloc((size_t)w * h * stack, sizeof(uint32_t));
     if (!canvas) { font_free(fnt); return 1; }
-    render_full(canvas, w, h, fnt, &dl, pics, THUMB_MAX_SLOTS, scale);
+    if (want_top) render_full(canvas, w, h, fnt, &dl_top, pics, THUMB_MAX_SLOTS, scale);
+    if (want_bot) render_full(canvas + (size_t)w * h * (want_top ? 1 : 0), w, h, fnt, &dl_bot,
+                              pics, THUMB_MAX_SLOTS, scale);
 
     FILE *f = fopen(path, "wb");
     if (!f) { log_line("shot: cannot write %s", path); free(canvas); font_free(fnt); return 1; }
-    fprintf(f, "P6\n%d %d\n255\n", w, h);
-    for (int i = 0; i < w * h; i++) {
+    fprintf(f, "P6\n%d %d\n255\n", w, h * stack);
+    for (int i = 0; i < w * h * stack; i++) {
         uint8_t px[3] = { (uint8_t)(canvas[i] >> 16), (uint8_t)(canvas[i] >> 8), (uint8_t)canvas[i] };
         fwrite(px, 1, 3, f);
     }
     fclose(f);
-    log_line("shot: %s (%d draws)", path, dl.n);
+    log_line("shot: %s (%d+%d draws)", path, dl_top.n, dl_bot.n);
     free(canvas);
     font_free(fnt);
     return 0;

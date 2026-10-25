@@ -205,6 +205,44 @@ int main(void)
     ui_key(&st, BK_X);
     check(st.view_h >= TILE_H);
 
+    /* ---- a frame's draw list is that frame's, and nothing else's ----
+     * ui_draw clears the list it is handed. The app used to reset it once outside its main loop, so every
+     * frame appended another copy of the whole UI: the count grew by a screenful per frame until the list hit
+     * DRAW_MAX, and past that dl_push() dropped the tail -- the screen stopped updating, which on the handheld
+     * was a keyboard that froze after one letter and a 250 ms full-screen repaint every frame before that.
+     * The lists here are deliberately not cleared first: ui_draw has to do it. */
+    ui_init(&st);
+    DrawList d1, d2;
+    memset(&d1, 0x5a, sizeof d1);
+    ui_draw_top(&st, &d1, NULL, 0);
+    memset(&d2, 0x5a, sizeof d2);
+    ui_draw_bot(&st, &d2, NULL, 0);
+    check(d1.n > 0);
+    check(d2.n > 0);
+    check_int(d1.dropped, 0);
+    check_int(d2.dropped, 0);
+    /* each of them clears what it is given, and neither grows: the content is on the top panel and the
+     * controls on the bottom, so a second frame of each must be exactly the first */
+    DrawList t1, t2, b1, b2;
+    memset(&t1, 0x5a, sizeof t1);
+    ui_draw_top(&st, &t1, NULL, 0);
+    memset(&t2, 0x5a, sizeof t2);
+    ui_draw_top(&st, &t2, NULL, 0);
+    check_int(t2.n, t1.n);
+    memset(&b1, 0x5a, sizeof b1);
+    ui_draw_bot(&st, &b1, NULL, 0);
+    memset(&b2, 0x5a, sizeof b2);
+    ui_draw_bot(&st, &b2, NULL, 0);
+    check_int(b2.n, b1.n);
+    /* and with the keyboard up, where the bottom panel has the most draws it ever has */
+    ui_key(&st, BK_SELECT);
+    memset(&b1, 0x5a, sizeof b1);
+    ui_draw_bot(&st, &b1, NULL, 0);
+    memset(&b2, 0x5a, sizeof b2);
+    ui_draw_bot(&st, &b2, NULL, 0);
+    check_int(b2.n, b1.n);
+    check_int(b1.dropped, 0);
+
     /* ---- the transport row ---- */
     /* the buttons tile the width: no gap at the ends, and every pixel of the row belongs to one of them */
     int px, pw, last_x = 0, last_w = 0;

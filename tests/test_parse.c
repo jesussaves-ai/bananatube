@@ -61,6 +61,26 @@ int main(void)
     check(rs[1].live);
 
     /* ---- InnerTube player ---- */
+    /* ---- InnerTube, as the API actually answers ----
+     * The Android VR client returns compactVideoRenderer for a search, not videoRenderer. The fixture above
+     * was hand-written with the name the parser wanted, so nothing caught the difference and the app read
+     * zero results out of a 200 response containing nineteen videos. This one is a real response, captured
+     * with the app's own payload and pruned to three items; only the human-readable text was replaced. */
+    json = test_read("innertube_search_compact.json");
+    n = innertube_parse_search(json, rs, 16);
+    check_int(n, 3);
+    check_str(rs[0].id, "0OmRrFD8zJk");
+    check_str(rs[0].title, "Result 1");
+    check_str(rs[0].channel, "Channel 1");
+    check_int(rs[0].duration_sec, 3 * 60 + 16);
+    check(rs[0].views > 139000000 && rs[0].views < 140000000);
+    check_str(rs[1].title, "Result 2");
+    check_str(rs[2].title, "Result 3");
+    check_int(rs[2].duration_sec, 18);
+    check(!rs[0].live);
+    /* a truncated list is still a list */
+    check_int(innertube_parse_search(json, rs, 2), 2);
+
     json = test_read("innertube_player.json");
     VideoDetail d;
     check_int(innertube_parse_video(json, "vidOne00001", &d), 0);

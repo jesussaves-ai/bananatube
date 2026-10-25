@@ -56,6 +56,15 @@ void      kb_layout(int x, int y, int w, int h, int *key_w, int *key_h, int *wid
 /* How tall it is, whatever the width: the results above it are given what is left over. */
 int       kb_height(void);
 
+/* The keyboard's box: the bottom panel, above the hint row. kb_draw draws into it and kb_tap hit-tests in it
+ * -- one definition, because a keyboard whose hit test and drawing disagree types the wrong letter. It used to
+ * bottom-align itself in the whole 640x480 screen whatever box it was given, which left most of the panel
+ * empty once the keyboard had a panel to itself. */
+#define KB_BOX_X 0
+#define KB_BOX_Y 0
+#define KB_BOX_W SCREEN_W
+#define KB_BOX_H (SCREEN_H - 30)          /* 30: the hint row at the bottom (view.c's HINTS_H) */
+
 void      kb_draw(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, int w, int h);
 
 #endif /* BANANATUBE_KEYBOARD_H */

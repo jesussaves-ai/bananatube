@@ -1,0 +1,546 @@
+{
+ "contents": {
+  "twoColumnSearchResultsRenderer": {
+   "primaryContents": {
+    "sectionListRenderer": {
+     "contents": [
+      {
+       "itemSectionRenderer": {
+        "contents": [
+         {
+          "compactVideoRenderer": {
+           "videoId": "0OmRrFD8zJk",
+           "thumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://i.ytimg.com/vi/0OmRrFD8zJk/default.jpg",
+              "width": 120,
+              "height": 90
+             },
+             {
+              "url": "https://i.ytimg.com/vi/0OmRrFD8zJk/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+             },
+             {
+              "url": "https://i.ytimg.com/vi/0OmRrFD8zJk/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+             },
+             {
+              "url": "https://i.ytimg.com/vi/0OmRrFD8zJk/sddefault.jpg",
+              "width": 640,
+              "height": 480
+             }
+            ]
+           },
+           "title": {
+            "runs": [
+             {
+              "text": "Result 1"
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Channel 1",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazsoBBL7fywE=",
+               "browseEndpoint": {
+                "browseId": "UCqjjyPUghDSSKFBABM_CXMw",
+                "canonicalBaseUrl": "/channel/UCqjjyPUghDSSKFBABM_CXMw"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "runs": [
+             {
+              "text": "7 years ago"
+             }
+            ]
+           },
+           "viewCountText": {
+            "runs": [
+             {
+              "text": "139,760,050 views"
+             }
+            ]
+           },
+           "lengthText": {
+            "runs": [
+             {
+              "text": "3:16"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "3 minutes, 16 seconds"
+             }
+            }
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazjIGc2VhcmNoUgZiYW5hbmGaAQMQ9CTKAQS-38sB",
+            "watchEndpoint": {
+             "videoId": "0OmRrFD8zJk",
+             "params": "8gMFDcZ3Tz8%3D",
+             "playerParams": "ygUGYmFuYW5h"
+            }
+           },
+           "shortBylineText": {
+            "runs": [
+             {
+              "text": "Channel 1",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazsoBBL7fywE=",
+               "browseEndpoint": {
+                "browseId": "UCqjjyPUghDSSKFBABM_CXMw",
+                "canonicalBaseUrl": "/channel/UCqjjyPUghDSSKFBABM_CXMw"
+               }
+              }
+             }
+            ]
+           },
+           "badges": [
+            {
+             "metadataBadgeRenderer": {
+              "style": "BADGE_STYLE_TYPE_SIMPLE",
+              "label": "CC",
+              "trackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazg=="
+             }
+            }
+           ],
+           "channelThumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://yt3.ggpht.com/WHAM1UynTS7c5XcDJ0T5lPzbivLi-53dSdRoCRO6reCLzElMDgBUp7GruXIgYpaS_Atzbxe97g=s88-c-k-c0x00ffffff-no-rj",
+              "width": 68,
+              "height": 68
+             }
+            ]
+           },
+           "ownerBadges": [
+            {
+             "metadataBadgeRenderer": {
+              "icon": {
+               "iconType": "OFFICIAL_ARTIST_BADGE"
+              },
+              "style": "BADGE_STYLE_TYPE_VERIFIED_ARTIST",
+              "tooltip": "Official Artist Channel",
+              "trackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazg=="
+             }
+            }
+           ],
+           "trackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazkCZmfOHxbXk9NAB",
+           "shortViewCountText": {
+            "runs": [
+             {
+              "text": "139M views"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "139 million views"
+             }
+            }
+           },
+           "menu": {
+            "menuRenderer": {
+             "items": [
+              {
+               "menuNavigationItemRenderer": {
+                "text": {
+                 "runs": [
+                  {
+                   "text": "Save to playlist"
+                  }
+                 ]
+                },
+                "icon": {
+                 "iconType": "ADD_TO_PLAYLIST"
+                },
+                "navigationEndpoint": {
+                 "clickTrackingParams": "CCsQlKwJGAIiEwj6_-_K99WXAxWEyc4AHWsxGs7KAQS-38sB",
+                 "addToPlaylistEndpoint": {
+                  "videoId": "0OmRrFD8zJk"
+                 }
+                },
+                "trackingParams": "CCsQlKwJGAIiEwj6_-_K99WXAxWEyc4AHWsxGs4="
+               }
+              }
+             ],
+             "trackingParams": "CCoQpDAYACITCPr_78r31ZcDFYTJzgAdazEazg==",
+             "accessibility": {
+              "accessibilityData": {
+               "label": "Action menu"
+              }
+             }
+            }
+           },
+           "accessibility": {
+            "accessibilityData": {
+             "label": "Anitta feat. Becky G - Banana [Official Music Video] - 3 minutes, 16 seconds - Go to channel - Anitta - 139 million views - 7 years ago - play video"
+            }
+           }
+          }
+         },
+         {
+          "compactVideoRenderer": {
+           "videoId": "ig7EKb6BrQk",
+           "thumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://i.ytimg.com/vi/ig7EKb6BrQk/default.jpg",
+              "width": 120,
+              "height": 90
+             },
+             {
+              "url": "https://i.ytimg.com/vi/ig7EKb6BrQk/mqdefault.jpg",
+              "width": 320,
+              "height": 180
+             },
+             {
+              "url": "https://i.ytimg.com/vi/ig7EKb6BrQk/hqdefault.jpg",
+              "width": 480,
+              "height": 360
+             },
+             {
+              "url": "https://i.ytimg.com/vi/ig7EKb6BrQk/sddefault.jpg",
+              "width": 640,
+              "height": 480
+             }
+            ]
+           },
+           "title": {
+            "runs": [
+             {
+              "text": "Result 2"
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Channel 2",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CCgQpDAYASITCPr_78r31ZcDFYTJzgAdazEazsoBBL7fywE=",
+               "browseEndpoint": {
+                "browseId": "UCY27hxWP4QRIvTnJvrfGJoA",
+                "canonicalBaseUrl": "/channel/UCY27hxWP4QRIvTnJvrfGJoA"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "runs": [
+             {
+              "text": "1 year ago"
+             }
+            ]
+           },
+           "viewCountText": {
+            "runs": [
+             {
+              "text": "277,763,166 views"
+             }
+            ]
+           },
+           "lengthText": {
+            "runs": [
+             {
+              "text": "2:12"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "2 minutes, 12 seconds"
+             }
+            }
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CCgQpDAYASITCPr_78r31ZcDFYTJzgAdazEazjIGc2VhcmNoUgZiYW5hbmGaAQMQ9CTKAQS-38sB",
+            "watchEndpoint": {
+             "videoId": "ig7EKb6BrQk",
+             "params": "8gMFDcZ3Tz8%3D",
+             "playerParams": "ygUGYmFuYW5h0gcJCSwMAYcqIYzv"
+            }
+           },
+           "shortBylineText": {
+            "runs": [
+             {
+              "text": "Channel 2",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CCgQpDAYASITCPr_78r31ZcDFYTJzgAdazEazsoBBL7fywE=",
+               "browseEndpoint": {
+                "browseId": "UCY27hxWP4QRIvTnJvrfGJoA",
+                "canonicalBaseUrl": "/channel/UCY27hxWP4QRIvTnJvrfGJoA"
+               }
+              }
+             }
+            ]
+           },
+           "channelThumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://yt3.ggpht.com/qqIOPCyECOP39dqelU-iOUTylpyn_JyIYMQtUG7v_XVZ0QFr73J5kip2WYlSY9ubQ3NrRdUUy8s=s88-c-k-c0x00ffffff-no-rj",
+              "width": 68,
+              "height": 68
+             }
+            ]
+           },
+           "ownerBadges": [
+            {
+             "metadataBadgeRenderer": {
+              "icon": {
+               "iconType": "OFFICIAL_ARTIST_BADGE"
+              },
+              "style": "BADGE_STYLE_TYPE_VERIFIED_ARTIST",
+              "tooltip": "Official Artist Channel",
+              "trackingParams": "CCgQpDAYASITCPr_78r31ZcDFYTJzgAdazEazg=="
+             }
+            }
+           ],
+           "trackingParams": "CCgQpDAYASITCPr_78r31ZcDFYTJzgAdazEazkCJ2ob0m4Wxh4oB",
+           "shortViewCountText": {
+            "runs": [
+             {
+              "text": "277M views"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "277 million views"
+             }
+            }
+           },
+           "menu": {
+            "menuRenderer": {
+             "items": [
+              {
+               "menuNavigationItemRenderer": {
+                "text": {
+                 "runs": [
+                  {
+                   "text": "Save to playlist"
+                  }
+                 ]
+                },
+                "icon": {
+                 "iconType": "ADD_TO_PLAYLIST"
+                },
+                "navigationEndpoint": {
+                 "clickTrackingParams": "CCkQlKwJGAEiEwj6_-_K99WXAxWEyc4AHWsxGs7KAQS-38sB",
+                 "addToPlaylistEndpoint": {
+                  "videoId": "ig7EKb6BrQk"
+                 }
+                },
+                "trackingParams": "CCkQlKwJGAEiEwj6_-_K99WXAxWEyc4AHWsxGs4="
+               }
+              }
+             ],
+             "trackingParams": "CCgQpDAYASITCPr_78r31ZcDFYTJzgAdazEazg==",
+             "accessibility": {
+              "accessibilityData": {
+               "label": "Action menu"
+              }
+             }
+            }
+           },
+           "accessibility": {
+            "accessibilityData": {
+             "label": "CHICKEN BANANA - 2 minutes, 12 seconds - Go to channel - Crazy Music Channel - 277 million views - 1 year ago - play video"
+            }
+           }
+          }
+         },
+         {
+          "compactVideoRenderer": {
+           "videoId": "eQqdkEU_bng",
+           "thumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://i.ytimg.com/vi/eQqdkEU_bng/default.jpg?sqp=-oaymwEkCHgQWvKriqkDGvABAfgBzgWAAoAKigIMCAAQARhjIGUoWDAP&rs=AOn4CLD9rLEMvlHpwxzqa9yn6853ocA_4A",
+              "width": 120,
+              "height": 90
+             },
+             {
+              "url": "https://i.ytimg.com/vi/eQqdkEU_bng/mqdefault.jpg?sqp=-oaymwEmCMACELQB8quKqQMa8AEB-AHOBYACgAqKAgwIABABGGMgZShYMA8=&rs=AOn4CLB1BhZJ-KtIlYo0z2bRvav0l2MQow",
+              "width": 320,
+              "height": 180
+             },
+             {
+              "url": "https://i.ytimg.com/vi/eQqdkEU_bng/hqdefault.jpg?sqp=-oaymwEmCOADEOgC8quKqQMa8AEB-AHOBYACgAqKAgwIABABGGMgZShYMA8=&rs=AOn4CLDmJHpgP_Ek-exDgbQM16CVMDmrAg",
+              "width": 480,
+              "height": 360
+             },
+             {
+              "url": "https://i.ytimg.com/vi/eQqdkEU_bng/sddefault.jpg?sqp=-oaymwEmCIAFEOAD8quKqQMa8AEB-AHOBYACgAqKAgwIABABGGMgZShYMA8=&rs=AOn4CLDC2gtPFoA9aRQ7jF6uP4l1GdXxLA",
+              "width": 640,
+              "height": 480
+             }
+            ]
+           },
+           "title": {
+            "runs": [
+             {
+              "text": "Result 3"
+             }
+            ]
+           },
+           "longBylineText": {
+            "runs": [
+             {
+              "text": "Channel 3",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazsoBBL7fywE=",
+               "browseEndpoint": {
+                "browseId": "UCOicc9kd58k_XR3D7bTx8oA",
+                "canonicalBaseUrl": "/@ricoanimations0"
+               }
+              }
+             }
+            ]
+           },
+           "publishedTimeText": {
+            "runs": [
+             {
+              "text": "3 years ago"
+             }
+            ]
+           },
+           "viewCountText": {
+            "runs": [
+             {
+              "text": "144,255,979 views"
+             }
+            ]
+           },
+           "lengthText": {
+            "runs": [
+             {
+              "text": "0:18"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "18 seconds"
+             }
+            }
+           },
+           "navigationEndpoint": {
+            "clickTrackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazjIGc2VhcmNoUgZiYW5hbmGaAQMQ9CTKAQS-38sB",
+            "watchEndpoint": {
+             "videoId": "eQqdkEU_bng",
+             "params": "8gMFDcZ3Tz8%3D",
+             "playerParams": "ygUGYmFuYW5h"
+            }
+           },
+           "shortBylineText": {
+            "runs": [
+             {
+              "text": "Channel 3",
+              "navigationEndpoint": {
+               "clickTrackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazsoBBL7fywE=",
+               "browseEndpoint": {
+                "browseId": "UCOicc9kd58k_XR3D7bTx8oA",
+                "canonicalBaseUrl": "/@ricoanimations0"
+               }
+              }
+             }
+            ]
+           },
+           "badges": [
+            {
+             "metadataBadgeRenderer": {
+              "style": "BADGE_STYLE_TYPE_SIMPLE",
+              "label": "4K",
+              "trackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazg=="
+             }
+            }
+           ],
+           "channelThumbnail": {
+            "thumbnails": [
+             {
+              "url": "https://yt3.ggpht.com/G3ueI7uKtQX881ef5XqD4FhqlutUvrRc2BklljOEOW7kMuEKk995iDW1IjPALx3VO49W1kG_fA=s68-c-k-c0x00ffffff-no-rj",
+              "width": 68,
+              "height": 68
+             }
+            ]
+           },
+           "ownerBadges": [
+            {
+             "metadataBadgeRenderer": {
+              "icon": {
+               "iconType": "CHECK_CIRCLE_THICK"
+              },
+              "style": "BADGE_STYLE_TYPE_VERIFIED",
+              "tooltip": "Verified",
+              "trackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazg=="
+             }
+            }
+           ],
+           "trackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazkD43P2phLKnhXk=",
+           "shortViewCountText": {
+            "runs": [
+             {
+              "text": "144M views"
+             }
+            ],
+            "accessibility": {
+             "accessibilityData": {
+              "label": "144 million views"
+             }
+            }
+           },
+           "menu": {
+            "menuRenderer": {
+             "items": [
+              {
+               "menuNavigationItemRenderer": {
+                "text": {
+                 "runs": [
+                  {
+                   "text": "Save to playlist"
+                  }
+                 ]
+                },
+                "icon": {
+                 "iconType": "ADD_TO_PLAYLIST"
+                },
+                "navigationEndpoint": {
+                 "clickTrackingParams": "CCcQlKwJGAIiEwj6_-_K99WXAxWEyc4AHWsxGs7KAQS-38sB",
+                 "addToPlaylistEndpoint": {
+                  "videoId": "eQqdkEU_bng"
+                 }
+                },
+                "trackingParams": "CCcQlKwJGAIiEwj6_-_K99WXAxWEyc4AHWsxGs4="
+               }
+              }
+             ],
+             "trackingParams": "CCYQpDAYAiITCPr_78r31ZcDFYTJzgAdazEazg==",
+             "accessibility": {
+              "accessibilityData": {
+               "label": "Action menu"
+              }
+             }
+            }
+           },
+           "accessibility": {
+            "accessibilityData": {
+             "label": "Banana 2!! (4k memes) - 18 seconds - Go to channel - Rico Animations - 144 million views - 3 years ago - play video"
+            }
+           }
+          }
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

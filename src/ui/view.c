@@ -46,8 +46,9 @@ static void layout(AppState *st)
     st->view_x = 8;
     st->view_y = GRID_Y;
     st->view_w = SCREEN_W - 16;
-    int bottom = SCREEN_H - HINTS_H;
-    if (st->view == VIEW_KEYBOARD) bottom -= kb_height();     /* one row of tiles still fits */
+    /* The grid is on the top panel and the keyboard is on the bottom one, so the grid always has the room:
+     * as many rows of tiles as fit above the top panel's own hint-free area. */
+    int bottom = SCREEN_H;
     st->view_h = bottom - GRID_Y;
     if (st->view_h < TILE_H) st->view_h = TILE_H;
     st->results.view_h = st->view_h;
@@ -478,34 +479,96 @@ static void draw_empty(AppState *st, DrawList *dl)
                  "the on-screen keyboard works with the D-pad or by touch, as the menu's does", ALIGN_CENTER);
 }
 
-void ui_draw(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
+/* What is selected, on the panel that holds the controls. The top panel has the grid or the video; this says
+ * what that grid is pointing at -- and, before the first search, what to do. Deliberately not a second copy of
+ * what is on the top screen. */
+static void draw_details(AppState *st, DrawList *dl)
+{
+    const UiTheme *t = &st->theme;
+    const char *title = NULL, *channel = NULL;
+    char line[128] = "";
+    int y = 24;
+
+    if (st->view == VIEW_RESULTS && !st->results.count) {
+        widget_title(dl, t, 20, y, SCREEN_W - 40, 34, "BananaTube", ALIGN_LEFT);
+        widget_label(dl, t, 20, y + 46, SCREEN_W - 40, 24, "Press SELECT to search", ALIGN_LEFT);
+        widget_small(dl, t, 20, y + 76, SCREEN_W - 40, 40,
+                     "The keyboard comes up down here; the results and the video are on the top screen.",
+                     ALIGN_LEFT);
+        return;
+    }
+
+    if (st->view == VIEW_HISTORY && st->history && st->history_sel < st->history->count) {
+        const HistoryItem *it = &st->history->item[st->history_sel];
+        char pos[24], dur[24];
+        fmt_duration((int)it->position, pos, sizeof pos);
+        fmt_duration(it->duration_sec, dur, sizeof dur);
+        title = it->title;
+        channel = it->channel;
+        snprintf(line, sizeof line, "%s of %s watched", pos, dur);
+    } else if (st->results.count) {
+        const SearchResult *r = &st->results.item[st->results.sel];
+        char dur[24], views[24];
+        fmt_duration(r->duration_sec, dur, sizeof dur);
+        fmt_views(r->views, views, sizeof views);
+        title = r->title;
+        channel = r->channel;
+        if (views[0]) snprintf(line, sizeof line, "%s \xC2\xB7 %s views", dur, views);
+        else          snprintf(line, sizeof line, "%s", dur);
+    }
+    if (!title) return;
+
+    dl_text_wrapped(dl, 20, y, SCREEN_W - 40, 68, title, FONT_UI_BOLD, 22, t->ink,
+                    ALIGN_LEFT, VALIGN_TOP, 2, 28);
+    widget_small(dl, t, 20, y + 74, SCREEN_W - 40, 20, channel ? channel : "", ALIGN_LEFT);
+    widget_small(dl, t, 20, y + 96, SCREEN_W - 40, 20, line, ALIGN_LEFT);
+}
+
+/* The top panel: the content. This is the app's main screen, which is where it belongs -- the search field and
+ * the results are here, the video is here, and the panel with the touchscreen below holds the controls. */
+void ui_draw_top(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
 {
     const UiTheme *t = &st->theme;
 
+    /* A frame's draws are that frame's. The list is cleared here, not by the caller: resetting it once
+     * outside the main loop appended the whole UI to itself every frame, which grew the list until it hit
+     * DRAW_MAX and then silently dropped the tail, so the screen stopped updating. Owning it here also makes
+     * it testable -- tests/test_ui.c draws twice and requires the same count. */
+    dl_reset(dl);
+
     dl_rect(dl, 0, 0, SCREEN_W, SCREEN_H, t->bg);
+
+    if (st->view == VIEW_PLAYING) return;        /* mpv's video, with the overlay drawn over it */
+    if (st->view == VIEW_HISTORY) { draw_header(st, dl); draw_history(st, dl); return; }
+
     draw_header(st, dl);
+    draw_search_bar(st, dl);
+    if (st->results.count)
+        results_draw(dl, &st->results, t, tex, tex_n, st->view_x, st->view_y, st->view_w, st->view_h);
+    else
+        draw_empty(st, dl);
+}
+
+/* The bottom panel: the controls. The keyboard while a query is typed, the transport row while a video plays,
+ * and what is selected the rest of the time -- all of it on the panel a finger can reach. */
+void ui_draw_bot(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
+{
+    const UiTheme *t = &st->theme;
+
+    dl_reset(dl);
+    dl_rect(dl, 0, 0, SCREEN_W, SCREEN_H, t->bg);
 
     if (st->view == VIEW_PLAYING) {
         draw_playing(st, dl);
         draw_hints(st, dl);
         return;
     }
-    if (st->view == VIEW_HISTORY) {
-        draw_history(st, dl);
+    if (st->view == VIEW_KEYBOARD) {
+        kb_draw(dl, &st->kb, t, KB_BOX_X, KB_BOX_Y, KB_BOX_W, KB_BOX_H);
         draw_hints(st, dl);
         return;
     }
-
-    draw_search_bar(st, dl);
-
-    if (st->results.count) {
-        results_draw(dl, &st->results, t, tex, tex_n, st->view_x, st->view_y, st->view_w, st->view_h);
-    } else {
-        draw_empty(st, dl);
-    }
-
-    if (st->view == VIEW_KEYBOARD)
-        kb_draw(dl, &st->kb, t, 0, GRID_Y, SCREEN_W, SCREEN_H - GRID_Y - HINTS_H);
-
+    draw_details(st, dl);
     draw_hints(st, dl);
 }
+

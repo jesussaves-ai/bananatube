@@ -125,24 +125,34 @@ KbAction kb_press(Keyboard *k, BananaKey key, char *out, size_t out_cap)
 
 int kb_height(void)
 {
-    return KB_ROWS * (KEY_H + KB_GAP) + WIDE_H + KB_PAD * 2;
+    return KB_ROWS * (KEY_H + KB_GAP) + WIDE_H + KB_PAD * 2;   /* the keys' own height, without the growth */
 }
 
 void kb_layout(int x, int y, int w, int h, int *key_w, int *key_h, int *wide_h)
 {
-    (void)y; (void)h;
+    (void)y;
     int kk = (w - KB_PAD * 2 - KB_GAP * (KB_COLS - 1)) / KB_COLS;
+    int kh = KEY_H, wh = WIDE_H;
+
+    /* With the panel to itself the keys grow to use it: a bigger key is a bigger touch target, and a keyboard
+     * filling half its panel looks like something failed to draw. The drawing and the hit test both come
+     * through here, so they cannot disagree about where a key is. */
+    if (h > 0) {
+        int rows_h = KB_ROWS * KEY_H + WIDE_H + KB_GAP * KB_ROWS + KB_PAD * 2;
+        int extra = (h - rows_h) / (KB_ROWS + 1);
+        if (extra > 0) { kh += extra; wh += extra; }
+    }
     if (key_w) *key_w = kk;
-    if (key_h) *key_h = KEY_H;
-    if (wide_h) *wide_h = WIDE_H;
+    if (key_h) *key_h = kh;
+    if (wide_h) *wide_h = wh;
 }
 
 KbAction kb_tap(Keyboard *k, int x, int y, char *out, size_t out_cap)
 {
     int key_w, key_h, wide_h;
-    kb_layout(0, 0, SCREEN_W, 0, &key_w, &key_h, &wide_h);
-    int left = KB_PAD;
-    int top = SCREEN_H - (KB_ROWS * (key_h + KB_GAP) + wide_h + KB_PAD);
+    kb_layout(KB_BOX_X, KB_BOX_Y, KB_BOX_W, KB_BOX_H, &key_w, &key_h, &wide_h);  /* the box kb_draw is given */
+    int left = KB_BOX_X + KB_PAD;
+    int top = KB_BOX_Y + KB_BOX_H - (KB_ROWS * (key_h + KB_GAP) + wide_h + KB_PAD);
     (void)x;
 
     int rel = y - top;

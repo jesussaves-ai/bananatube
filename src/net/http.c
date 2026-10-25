@@ -72,7 +72,7 @@ static bool transfer(const char *url, const char *body, const char *content_type
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &out->status);
 
     if (rc != CURLE_OK) {
-        str_copy(out->error, sizeof out->error, curl_easy_strerror(rc));
+        snprintf(out->error, sizeof out->error, "%s (curl %d)", curl_easy_strerror(rc), (int)rc);
         free(sink.data);
         sink.data = NULL;
     } else if (sink.overflow) {

@@ -3,7 +3,12 @@
 What to look for on a real RG DS and RG DS Plus, in the order it makes sense to do it. Everything here is
 something the host tests cannot check: the panels, the decoder, the touch mapping, the handover, battery.
 
-## Before you start
+## Before you start — the search needs Wi-Fi
+
+**Join a network first** (Settings ▸ Network). Without one, every search fails: the first run on the handheld
+had no `banana/wifi.conf` at all, so both backends failed and the log said `invidious: ... Error` and
+`innertube: ... Error`. The app now says "Could not reach YouTube. Is Wi-Fi on?" and logs which instance or
+endpoint it could not reach.
 
 - **A card with the build.** Settings ▸ Display & sound ▸ Theme is not involved; this is an app.
 - **SSH on** (Settings ▸ Network ▸ SSH, keys from `banana/ssh/authorized_keys`) so you can read the log and the
@@ -41,13 +46,17 @@ Then **YouTube** appears on the shelf and A hands the panels over. If a theme of
 If the menu does not come back, `pidof banana-ui` on SSH says whether it is there; init respawns it, so a black
 panel with a live `banana-ui` is a DRM handover problem worth a log.
 
-## 2. The bottom screen
+## 2. The two screens
+
+**The top panel carries the content and the bottom one the controls**: the search field, the results grid and the
+video are on the top screen; the keyboard, the transport row and what is selected are on the bottom one, which is
+the screen with the touchscreen.
 
 | | |
 |---|---|
-| The layout | A header, the search field, the results, and the button hints along the bottom. Nothing overlapping, nothing clipped at the edges. |
+| The layout | Top: a header, the search field, the results grid. Bottom: the keyboard while typing, the transport row while playing, the selected video's details otherwise, and the button hints along its bottom. Nothing overlapping, nothing clipped at the edges. |
 | The **Plus**'s 1.6 scaling | The same layout, larger, with no soft edges and no draw in the wrong place: this is where a forgotten `scale` shows up (it did, once). |
-| **Touch** | Tap a result: it should select, and tapping it again should play it. Tap a keyboard key: the letter should appear. If taps land somewhere other than your finger, that is the touchscreen's axis mapping — note which way it is off. |
+| **Touch** | Tap a keyboard key: the letter should appear, and tapping **search** should run the search (it used to do nothing: the tap path threw away the action the key raised). While a video plays, the transport row should respond to a tap. The top panel has no touchscreen, so the grid is D-pad only. If taps land somewhere other than your finger, note which way they are off. |
 | The keyboard | D-pad to move, A to type, B to delete, X capitals, Y space, START to search, SELECT to put it away. Touch should work for all of it. |
 
 ## 3. Searching
@@ -153,10 +162,28 @@ Recorded because none of it is visible from a desktop, and each one cost a build
    after a search that found nothing — `B` returned `UI_QUIT`. A back/cancel press there ended the program,
    which on a handheld is indistinguishable from a crash, and is how it was first reported. B now only ever
    clears; HOME is the only key that leaves. `tests/test_ui.c` had been asserting the old behaviour.
-4. **The idle top panel looked dead.** With nothing playing it is a placeholder whose brightness was about
-   11/255 — a working panel that reads as switched off. It is visible now, and the layout is what it is: the
-   **video on the top panel, the browsing UI on the bottom one** (the bottom is the touchscreen, so the UI has
-   to be there for a finger to reach it).
+4. **The idle top panel looked dead.** With nothing playing it was a placeholder whose brightness was about
+   11/255 — a working panel that reads as switched off — so the app looked like it was only on the bottom
+   screen. It is gone: the top panel now carries the app.
+5. **A frame's draw list was never cleared.** `dl_reset()` ran once outside the main loop, so every frame
+   appended another copy of the whole UI: the list grew by a screenful each frame until it hit `DRAW_MAX`, at
+   which point the draws that no longer fitted were dropped and the screen stopped updating. That was the
+   250 ms-a-frame full-screen repaint *and* the "freezes after one letter": by then the keyboard's draws were
+   past the end of the list. The instrumentation added for exactly this (`frame: ... draws, ... damage rects,
+   ... px repainted`) showed it in one run. `ui_draw_top`/`ui_draw_bot` now clear the list they are given, and
+   `tests/test_ui.c` draws twice and requires the same count.
+6. **InnerTube answered with nothing.** A search came back HTTP 200 with nineteen videos in it and the app read
+   zero, because the Android VR client returns `compactVideoRenderer` and the parser only looked for
+   `videoRenderer`. The fixture it was tested against had been hand-written with the name the parser wanted, so
+   nothing caught it; there is now a fixture captured from the real API.
+7. **Only the first Invidious instance was ever tried**, and the list was mostly dead (checked against the live
+   API: one answers, one rate-limits, one is behind a wall, one is down). All of them are tried in order now,
+   with the working one first and the others as fallbacks.
+8. **The layout.** The results were on the bottom panel, which read as the app being on the wrong screen — the
+   content goes on the top panel now and the controls on the bottom one, which is also where the touchscreen is.
+   The transport row had been drawn but was never actually tappable (`ui_transport_hit` was only used by its own
+   test), and the keyboard was bottom-aligned inside the whole screen whatever box it was given, which left most
+   of the bottom panel empty.
 
 ## Known unknowns, in order of how likely they are to need a change
 

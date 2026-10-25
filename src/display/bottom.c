@@ -19,6 +19,11 @@ bool bottom_init(Bottom *b, int fd, const DrmPanel *p)
     return true;
 }
 
+void bottom_invalidate(Bottom *b)
+{
+    b->have_prev = false;
+}
+
 void bottom_set_font(Bottom *b, FontCtx *f)
 {
     b->font = f;

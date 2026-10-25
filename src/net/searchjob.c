@@ -53,11 +53,24 @@ static void *search_main(void *arg)
         else if (conf.backend == BACKEND_INVIDIOUS) { order[nb++] = &backend_invidious; }
         else { order[0] = &backend_invidious; order[1] = &backend_innertube; nb = 2; }
 
+        /* A backend that could not be reached (-1) is not a backend that found nothing (0). The first is
+         * "your Wi-Fi is off"; only the second is "nothing matched" -- and telling them apart is the
+         * difference between a screen that says something useful and one that says nothing. */
+        int answered = 0;
         for (int b = 0; b < nb && n == 0; b++) {
-            n = order[b]->search(&conf, query, found, SEARCHQ_MAX);
-            if (n == 0) snprintf(message, sizeof message, "%s did not answer", order[b]->name);
+            int got = order[b]->search(&conf, query, found, SEARCHQ_MAX);
+            if (got < 0) {
+                log_line("search: %s could not be reached", order[b]->name);
+                snprintf(message, sizeof message, "Could not reach YouTube. Is Wi-Fi on?");
+                continue;
+            }
+            answered = 1;
+            n = got;
+            if (got == 0) snprintf(message, sizeof message, "%s found nothing for that", order[b]->name);
         }
-        if (n == 0 && !message[0]) str_copy(message, sizeof message, "No results. Is Wi-Fi on?");
+        if (n == 0)
+            str_copy(message, sizeof message, answered ? "Nothing found for that."
+                                                      : "Could not reach YouTube. Is Wi-Fi on?");
 
         pthread_mutex_lock(&j->lock);
         j->count = n;

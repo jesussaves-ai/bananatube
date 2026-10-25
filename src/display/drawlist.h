@@ -9,6 +9,7 @@
 typedef struct {
     DrawOp op[DRAW_MAX];
     int    n;
+    int    dropped;            /* how many draws were refused because the list was full (0 in a sane frame) */
     /* the clip stack: push_clip narrows it, pop_clip widens it back. Every op stores the resolved clip
      * that was in force when it was pushed. */
     int    cx, cy, cw, ch;

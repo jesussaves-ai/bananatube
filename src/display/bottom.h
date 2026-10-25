@@ -31,6 +31,10 @@ typedef struct {
 bool bottom_init(Bottom *b, int fd, const DrmPanel *p);
 void bottom_set_font(Bottom *b, FontCtx *f);
 void bottom_fini(Bottom *b, int fd);
+/* Forget the last frame, so the next present repaints all of it. For a panel that has been showing something
+ * else in between -- the video, or another view -- where the diff against the last draw list would otherwise
+ * say "nothing changed" and leave the old picture underneath. */
+void bottom_invalidate(Bottom *b);
 
 /* Draws `dl` and puts it on the panel. `tex` (may be NULL) is the thumbnail table the OP_IMAGE draws read;
  * a slot with no pixels draws the op's placeholder colour.

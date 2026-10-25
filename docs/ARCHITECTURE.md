@@ -30,9 +30,18 @@ the same path, with one panel per technique:
 
 | | Top panel | Bottom panel |
 |---|---|---|
-| Drawn by | the GPU, through `libmpv` (Phase 3) | the CPU |
-| Surface | `GBM` surface + `EGL` context (`display/gbm_egl.c`) | DRM dumb buffers (`display/bottom.c`) |
-| Why | the VPU decodes into DMABUFs the GPU imports; a CPU copy of 720p60 would not fit the budget | a search field, a keyboard and a grid of thumbnails need no GPU, and the CPU path is what the menu already proves is fast |
+| Carries | **the content**: the search field, the results grid, the video | **the controls**: the keyboard, the transport row, what is selected |
+| Drawn by | the CPU (dumb buffers) while browsing, the GPU through `libmpv` while playing | the CPU (dumb buffers) |
+| Surface | `display/bottom.c`'s canvas, or a `GBM` surface + `EGL` context (`display/gbm_egl.c`) | DRM dumb buffers (`display/bottom.c`) |
+| Why | it is the main screen — the one the menu is on — so what you are looking at belongs there | it is the screen with the touchscreen, so every control belongs there |
+
+That split came from the handheld: the first version put the whole client on the bottom panel, which reads as the
+app running on the wrong screen, and left the top panel showing a placeholder so dark it looked switched off.
+
+The top panel therefore has two ways of being driven, and they never run at the same time: a dumb buffer made by
+`bottom_present()` while the app is being browsed, and mpv's frames through EGL once a video starts. Switching
+between them invalidates the damage diff (`bottom_invalidate()`), or the panel keeps the last video frame under
+the results — the diff would compare the grid against mpv's frame and conclude that nothing had changed.
 
 The bottom panel is the arrangement banana-ui uses, which is what keeps an idle frame cheap:
 

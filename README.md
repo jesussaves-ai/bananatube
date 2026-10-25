@@ -24,23 +24,39 @@ Phase 1 (this repository's first commit) — the skeleton, built and tested:
 | ✅ | **Phase 3**: libmpv rendering the video into the top panel's EGL surface, hard-decoded, with the memory caps in force and an overlay; the bottom screen becomes the player's |
 | ✅ | **Phase 4**: a transport row (pause, seek, volume, quality, prev/next, stop) that is tapped or driven by the buttons; a watched list that carries on where it stopped; and audio-only with the lid shut |
 
-On the handheld the bottom panel is the client — type a search with the D-pad or by touch, and the results come
-back as a grid of tiles with their pictures — and the top panel plays the video, decoded by the RK3568's video
-unit. The overlay along the bottom of the video (the resolution being decoded, the position, a spinner while it
-buffers, and the frames it had to drop) is drawn by the same renderer as the bottom screen and uploaded as one
-texture.
+**The top panel carries the content and the bottom one the controls.** The search field, the results grid and
+the video are on the top screen — the main one, where BananaOS's own menu is — and the bottom screen, the one with
+the touchscreen in it, has the keyboard while you type, the transport row while a video plays, and what is
+selected the rest of the time. So the grid is on the screen you look at, and every control is under a finger.
+
+The video is decoded by the RK3568's video unit. The overlay along the bottom of it (the resolution being decoded,
+the position, a spinner while it buffers, and the frames it had to drop) is drawn by the same renderer as the
+bottom screen and uploaded as one texture.
+
+Every picture below is both panels, stacked the way the two screens sit on the handheld. They are drawn by the
+same code the handheld runs: `bananatube --shot` renders the client into a buffer with no DRM, no GPU and no
+network (see [Test](#test)).
 
 | | |
 |---|---|
-| The results grid | Grabbing `bananatube --shot`, which renders the client with no panels (see [Test](#test)):<br><img src="docs/img/results.png" width="420" alt="The results grid: a search field, three columns of video tiles with thumbnails, durations and view counts, and the selected tile marked"> |
-| Typing a search | <img src="docs/img/keyboard.png" width="420" alt="The on-screen keyboard: four rows of ten keys and a row of wide keys, with one row of results still visible above"> |
-| The same, on the Plus | <img src="docs/img/results-plus.png" width="420" alt="The results grid at the RG DS Plus's 1024x768, the same layout scaled by 1.6"> |
-| Before a search | <img src="docs/img/first-run.png" width="420" alt="The first screen: a search field and the words Press SELECT to search YouTube"> |
-| Playing a video | <img src="docs/img/playing.png" width="420" alt="While a video plays: its title, the channel, the resolution being decoded, the volume, a progress bar and the position, and a row of buttons: previous, volume down, pause, volume up, the quality, next and stop"> |
-| Carrying on | <img src="docs/img/history.png" width="420" alt="The watched list: five videos, each with its channel and how far in it got, the selected one marked"> |
+| The results grid | <img src="docs/img/results.png" width="380" alt="Top: the YouTube header, a search field and three columns of video tiles with thumbnails, durations and view counts, the selected tile marked. Bottom: the selected video's title, channel and duration, over the button hints"> |
+| Typing a search | <img src="docs/img/keyboard.png" width="380" alt="Top: the results grid with a caret in the search field. Bottom: the on-screen keyboard filling the panel — four rows of ten keys and a row of wide keys — with the hints under it"> |
+| The same, on the Plus | <img src="docs/img/results-plus.png" width="380" alt="Both panels at the RG DS Plus's 1024x768, the same layout scaled by 1.6"> |
+| Before a search | <img src="docs/img/first-run.png" width="380" alt="Top: the search field and the words Press SELECT to search YouTube. Bottom: what the buttons do down there"> |
+| Playing a video | <img src="docs/img/playing.png" width="380" alt="Top: the video (empty in this render — nothing is decoding). Bottom: its title, the channel, the resolution being decoded, the volume, a progress bar and the position, and a row of buttons: previous, volume down, pause, volume up, the quality, next and stop"> |
+| Carrying on | <img src="docs/img/history.png" width="380" alt="Top: the watched list, five videos each with its channel and how far in it got, the selected one marked. Bottom: the selected one's details"> |
 
-*These are the bottom panel, rendered by the same code the handheld runs — `bananatube --shot` draws the client
-into a buffer with no DRM, no GPU and no network.*
+## The controls
+
+| | |
+|---|---|
+| Browsing | **SELECT** (or **X**) opens the keyboard · **A** plays what is selected · **Y** the watched list · **B** clears the results · **HOME** leaves |
+| Typing | **A** types the key under the cursor · **B** deletes · **X** capitals · **Y** space · **START** searches · **SELECT** puts the keyboard away · the D-pad moves |
+| Playing | **START** pause · **LEFT**/**RIGHT** or **L2**/**R2** seek ±10 s · **UP**/**DOWN** volume · **L1**/**R1** previous/next video · **X** the quality (360p → 480p → 720p) · **B** stops · **HOME** leaves |
+| By touch | The keyboard, the transport row and everything on the bottom panel are tappable; the top panel has no touchscreen |
+
+**The search needs Wi-Fi.** Settings ▸ Network joins a network; without one the app says "Could not reach
+YouTube. Is Wi-Fi on?" rather than pretending it searched.
 
 ## Getting it on the handheld
 

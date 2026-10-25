@@ -14,10 +14,13 @@
 
 /* Tried in order when bananatube.conf names no instance. Kept short, so a slow one cannot hold a search for
  * the whole timeout. */
+/* Tried in this order. Checked against the live API when this was written: yewtu.be answers, nadeko is
+ * behind a wall (403), nerdvpn wants a login (401) and f5.si is down (530) -- they are kept as fallbacks
+ * because public instances move, and a refusal from one is not a reason to stop. */
 static const char *const INSTANCES[] = {
+    "https://yewtu.be",
     "https://inv.nadeko.net",
     "https://invidious.nerdvpn.de",
-    "https://yewtu.be",
     "https://invidious.f5.si",
 };
 #define N_INSTANCES ((int)(sizeof INSTANCES / sizeof INSTANCES[0]))
@@ -128,21 +131,45 @@ static Format format_from_piped(const cJSON *o, bool audio)
 
 /* ---- search ------------------------------------------------------------------------------------------- */
 
-static int search_invidious(const Conf *c, const char *query, SearchResult *out, int max)
+/* One instance's search. -1: could not be reached (which is not the same as an empty answer). */
+static int search_one(const Conf *c, const char *base, const char *query, SearchResult *out, int max)
 {
     char esc[512], url[URL_LEN];
+    if (!base) return -1;
     url_encode(query, esc, sizeof esc);
-    snprintf(url, sizeof url, "%s/api/v1/search?q=%s&type=video&page=1", invidious_instance(c, 0), esc);
+    snprintf(url, sizeof url, "%s/api/v1/search?q=%s&type=video&page=1", base, esc);
 
     HttpResponse r;
     if (!http_get(url, c->search_timeout_ms, &r)) {
-        log_line("invidious: search failed: %s", http_error(&r));
+        log_line("invidious: %s: %s", base, http_error(&r));
         http_response_free(&r);
-        return 0;
+        return -1;
     }
     int n = invidious_parse_search(r.data, out, max);
+    log_line("invidious: %s: %d results", base, n);
     http_response_free(&r);
-    return n > 0 ? n : search_piped(c, query, out, max);
+    return n;
+}
+
+static int search_invidious(const Conf *c, const char *query, SearchResult *out, int max)
+{
+    /* Every instance, in order -- not just the first, which is what this did. Public Invidious instances come
+     * and go, and mostly go: of the four built in, one answers, one rate-limits (401), one is behind a wall
+     * (403) and one is down (530), checked against the live API. With the first one refusing, the whole
+     * Invidious half of a search used to be one failed request. A configured instance is the only one tried,
+     * because then it is the user's choice. */
+    int reached = 0;
+    for (int i = 0; ; i++) {
+        const char *base = invidious_instance(c, i);
+        if (!base) break;
+        int n = search_one(c, base, query, out, max);
+        if (n > 0) return n;
+        if (n == 0) reached = 1;
+    }
+
+    int n = search_piped(c, query, out, max);
+    if (n != 0) return n;
+    return reached ? 0 : -1;                 /* nothing answered at all: no network, not an empty result */
 }
 
 int invidious_parse_search(const char *json, SearchResult *out, int max)
@@ -185,7 +212,11 @@ static int search_piped(const Conf *c, const char *query, SearchResult *out, int
     url_encode(query, esc, sizeof esc);
     snprintf(url, sizeof url, "%s/search?q=%s&filter=videos", invidious_instance(c, 0), esc);
     HttpResponse r;
-    if (!http_get(url, c->search_timeout_ms, &r)) { http_response_free(&r); return 0; }
+    if (!http_get(url, c->search_timeout_ms, &r)) {
+        log_line("piped: %s: %s", invidious_instance(c, 0), http_error(&r));
+        http_response_free(&r);
+        return -1;
+    }
     cJSON *root = json_parse(r.data, r.len, "piped search");
     http_response_free(&r);
     if (!root) return 0;

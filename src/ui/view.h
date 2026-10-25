@@ -95,7 +95,11 @@ typedef struct {
 
 void      ui_init(AppState *st);
 UiAction  ui_key(AppState *st, BananaKey key);
-void      ui_draw(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n);
+/* Two panels, two lists. The top one carries the content (the search field, the results, the video); the
+ * bottom one carries the controls (the keyboard, the transport row, and what is selected). Each clears the
+ * list it is given. */
+void      ui_draw_top(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n);
+void      ui_draw_bot(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n);
 /* main.c tells the UI what happened, so it can say so on screen. */
 void      ui_set_results(AppState *st, const SearchResult *items, int n, const char *message);
 void      ui_set_status(AppState *st, const char *message);
