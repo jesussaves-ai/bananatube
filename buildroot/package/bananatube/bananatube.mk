@@ -13,9 +13,16 @@
 #
 ################################################################################
 
-BANANATUBE_VERSION = main
+# A commit, not a branch: $(call github,...) builds an
+# https://github.com/<user>/<repo>/archive/<version>/<repo>-<version>.tar.gz URL, which is the tarball
+# download method. Pairing it with SITE_METHOD = git hands that whole URL to `git remote add origin` and the
+# fetch fails ("repository .../archive/main/ not found") -- the wrong combination, and no upstream package
+# makes it. Pinning a commit also makes the build reproducible and hashable (bananatube.hash).
+#
+# To build a newer one: git rev-parse HEAD in the bananatube checkout, put it here, and refresh the hash with
+#   make bananatube-update-hash  (or download the tarball and sha256sum it).
+BANANATUBE_VERSION = bff3c93dbb79d20a1ead597abd1916c82ac2d378
 BANANATUBE_SITE = $(call github,jesussaves-ai,bananatube,$(BANANATUBE_VERSION))
-BANANATUBE_SITE_METHOD = git
 BANANATUBE_LICENSE = GPL-3.0-or-later
 BANANATUBE_LICENSE_FILES = LICENSE
 # libdrm (the panels), Mesa/Panfrost (GBM + EGL on the top screen), libcurl + cJSON (the backends),
