@@ -28,10 +28,15 @@ typedef struct {
 typedef struct {
     HistoryItem item[HISTORY_MAX];
     int         count;                 /* most recent first */
+    int         cap;                   /* how many to keep: banana/bananatube.conf's history_size,
+                                        * clamped to HISTORY_MAX (the file is an array) */
     char        query[96];             /* the last search, so a restart comes back to it */
 } History;
 
 void history_clear(History *h);
+/* history_size from the settings. A value the file cannot hold is clamped rather than obeyed; an entry that
+ * no longer fits falls off the end. */
+void history_set_cap(History *h, int n);
 bool history_load(History *h, const char *path);       /* a missing or broken file: an empty history */
 bool history_save(const History *h, const char *path);
 

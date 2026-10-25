@@ -244,6 +244,7 @@ int main(int argc, char **argv)
     history_path(conf_path, hist_path, sizeof hist_path);
     if (history_load(&history, hist_path))
         log_line("history: %d entries from %s", history.count, hist_path);
+    history_set_cap(&history, conf.history_size);      /* history_size in bananatube.conf */
     /* A search already typed on the command line: run-bananatube banana theme. The menu passes the entry it
      * found instead -- this app's marker file -- and that is not a query (util.c's arg_is_query). */
     const char *initial = NULL;

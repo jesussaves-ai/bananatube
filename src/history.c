@@ -11,11 +11,22 @@
 void history_clear(History *h)
 {
     memset(h, 0, sizeof *h);
+    h->cap = HISTORY_MAX;
+}
+
+void history_set_cap(History *h, int n)
+{
+    if (!h) return;
+    if (n < 1) n = 1;
+    if (n > HISTORY_MAX) n = HISTORY_MAX;
+    h->cap = n;
+    if (h->count > n) h->count = n;      /* the oldest fall off the end */
 }
 
 bool history_load(History *h, const char *path)
 {
     history_clear(h);
+    if (h->cap == 0) h->cap = HISTORY_MAX;
     if (!path) return false;
 
     size_t n = 0;
@@ -30,7 +41,7 @@ bool history_load(History *h, const char *path)
     const cJSON *items = json_at(root, "items");
     const cJSON *o = NULL;
     cJSON_ArrayForEach(o, items) {
-        if (h->count >= HISTORY_MAX) break;
+        if (h->count >= h->cap) break;
         if (!cJSON_IsObject(o)) continue;
         HistoryItem *it = &h->item[h->count];
         json_str(o, "id", it->id, sizeof it->id);
@@ -105,7 +116,7 @@ void history_touch(History *h, const char *id, const char *title, const char *ch
 
     int at = index_of(h, id);
     if (at < 0) {
-        if (h->count >= HISTORY_MAX) h->count = HISTORY_MAX - 1;   /* the oldest falls off the end */
+        if (h->count >= h->cap) h->count = h->cap - 1;   /* the oldest falls off the end */
         at = h->count++;
         memset(&h->item[at], 0, sizeof h->item[at]);
         str_copy(h->item[at].id, sizeof h->item[at].id, id);

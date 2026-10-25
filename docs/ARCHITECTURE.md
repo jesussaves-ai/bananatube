@@ -194,8 +194,10 @@ the quality: 360p → 480p → 720p → 360p. Changing quality means re-resolvin
 same position, which is the only honest way to do it mid-stream; it is also written to `bananatube.conf`, so the
 choice is what the next video gets.
 
-**The watched list** is `banana/bananatube-history.json`: at most 50 entries, most recent first, each with where
-it got to, plus the last search so a restart is not a blank screen. JSON rather than SQLite because the data is
+**The watched list** is `banana/bananatube-history.json`: most recent first, each with where it got to, plus the
+last search so a restart is not a blank screen. How many are kept is `history_size` in `bananatube.conf` (50 to
+begin with), clamped to `HISTORY_MAX` because the file is an array — a value the file cannot hold is clamped
+rather than obeyed, and the entries that no longer fit fall off the end. JSON rather than SQLite because the data is
 a few kilobytes, cJSON is already here, and a file that can be read on a computer is worth more on a handheld
 than a query language. It is written on a pause, a stop, a switch and an exit, and every 30 s while playing, so
 pulling the battery loses at most half a minute. `SELECT` on the results screen opens it; `A` carries on from

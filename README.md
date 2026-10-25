@@ -85,7 +85,8 @@ invisible:
 | `ui` | the grid's geometry and selection, the keyboard, and what each button means |
 | `worker` | the thumbnail queue and the JPEG decode, with the fetch injected: a real JPEG, decoded off the thread |
 | `player` | that libmpv's options *took*: the 16 MiB demuxer cache, no cache, no yt-dlp of its own, no config file — the settings that decide whether a 1 GB handheld survives |
-| `history` | the watched list: it survives a restart, moves an opening video to the front, and keeps a fractional position through the JSON round trip |
+| `history` | the watched list: it survives a restart, moves an opening video to the front, keeps a fractional position through the JSON round trip, and obeys (and clamps) `history_size` |
+| `args` | what the menu's argument means: its own marker file is not a search, "apples" is |
 | `keys` `conf` `lru` | the button mapping, the settings file, the picture cache |
 
 They have already paid for themselves: two real bugs (a title arriving as a plain string in the player reply,

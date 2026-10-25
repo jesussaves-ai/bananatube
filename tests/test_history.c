@@ -90,6 +90,44 @@ int main(void)
     check_int(fresh.count, 0);
     unlink(path);
 
+    /* history_size from the settings: it is obeyed, clamped, and falls back to the array's size (the file is
+     * an array, so a bigger number cannot be honoured) */
+    History capped;
+    history_clear(&capped);
+    check_int(capped.cap, HISTORY_MAX);
+    history_set_cap(&capped, 3);
+    check_int(capped.cap, 3);
+    for (int i = 0; i < 5; i++) {
+        char id[VIDEO_ID_LEN];
+        snprintf(id, sizeof id, "cap%08d", i);
+        history_touch(&capped, id, "Capped", "A channel", 60);
+    }
+    check_int(capped.count, 3);
+    check_str(capped.item[0].id, "cap00000004");
+    check_str(capped.item[2].id, "cap00000002");       /* the first two fell off */
+    check_int(history_order(&capped, order, HISTORY_MAX), 3);
+    /* a smaller cap takes effect at once, from the end the list grows */
+    history_set_cap(&capped, 1);
+    check_int(capped.count, 1);
+    check_str(capped.item[0].id, "cap00000004");
+    /* nonsense in the file must not lose the list or crash it */
+    history_set_cap(&capped, 0);
+    check_int(capped.cap, 1);
+    history_set_cap(&capped, 100000);
+    check_int(capped.cap, HISTORY_MAX);
+    /* and the file only holds what the cap says */
+    tmp_path(path, sizeof path, "capped.json");
+    unlink(path);
+    history_set_cap(&capped, 2);
+    history_touch(&capped, "cap00000009", "Capped", "A channel", 60);
+    history_touch(&capped, "cap00000010", "Capped", "A channel", 60);
+    check(history_save(&capped, path));
+    History back2;
+    check(history_load(&back2, path));
+    check_int(back2.count, 2);
+    check_str(back2.item[0].id, "cap00000010");
+    unlink(path);
+
     /* the list is capped: the oldest falls off the end */
     History big;
     history_clear(&big);
