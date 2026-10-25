@@ -134,11 +134,10 @@ void ui_set_results(AppState *st, const SearchResult *items, int n, const char *
     results_scroll_into_view(&st->results, st->view_h);
     st->searching = false;
     ui_set_status(st, message ? message : (n > 0 ? "" : "Nothing found."));
-    if (!message || !*message) {
-        char m[64];
-        snprintf(m, sizeof m, "%d result%s", n, n == 1 ? "" : "s");
-        if (n == 0) str_copy(st->status, sizeof st->status, m);
-        else        snprintf(st->status, sizeof st->status, "%s \xC2\xB7 A plays \xC2\xB7 SELECT searches again", m);
+    if ((!message || !*message) && n > 0) {
+        /* Just the count: the row underneath already names every button, and repeating them there made the
+         * line long enough to be clipped on the left. */
+        snprintf(st->status, sizeof st->status, "%d result%s", n, n == 1 ? "" : "s");
     }
     st->dirty = true;
 }
@@ -482,11 +481,12 @@ static void draw_empty(AppState *st, DrawList *dl)
 /* What is selected, on the panel that holds the controls. The top panel has the grid or the video; this says
  * what that grid is pointing at -- and, before the first search, what to do. Deliberately not a second copy of
  * what is on the top screen. */
-static void draw_details(AppState *st, DrawList *dl)
+static void draw_details(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
 {
     const UiTheme *t = &st->theme;
     const char *title = NULL, *channel = NULL;
     char line[128] = "";
+    int slot = -1;
     int y = 24;
 
     if (st->view == VIEW_RESULTS && !st->results.count) {
@@ -513,6 +513,7 @@ static void draw_details(AppState *st, DrawList *dl)
         fmt_views(r->views, views, sizeof views);
         title = r->title;
         channel = r->channel;
+        slot = st->results.tex_slot[st->results.sel];
         if (views[0]) snprintf(line, sizeof line, "%s \xC2\xB7 %s views", dur, views);
         else          snprintf(line, sizeof line, "%s", dur);
     }
@@ -522,6 +523,16 @@ static void draw_details(AppState *st, DrawList *dl)
                     ALIGN_LEFT, VALIGN_TOP, 2, 28);
     widget_small(dl, t, 20, y + 74, SCREEN_W - 40, 20, channel ? channel : "", ALIGN_LEFT);
     widget_small(dl, t, 20, y + 96, SCREEN_W - 40, 20, line, ALIGN_LEFT);
+
+    /* The picture, large: the panel is mostly empty otherwise, and this is the video about to be played. */
+    int pw = SCREEN_W - 40, ph = SCREEN_H - 30 - (y + 122) - 10;
+    if (ph > 40) {
+        int has = (slot >= 0 && slot < tex_n && tex && tex[slot].pixels) ? slot : IMAGE_NONE;
+        dl_rect_rounded(dl, 20, y + 122, pw, ph, 10, t->bg);
+        dl_image(dl, 20, y + 122, pw, ph, has, FIT_CONTAIN, t->panel);
+        if (has == IMAGE_NONE)
+            widget_small(dl, t, 20, y + 122, pw, ph, "the picture is still loading", ALIGN_CENTER);
+    }
 }
 
 /* The top panel: the content. This is the app's main screen, which is where it belongs -- the search field and
@@ -568,7 +579,7 @@ void ui_draw_bot(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
         draw_hints(st, dl);
         return;
     }
-    draw_details(st, dl);
+    draw_details(st, dl, tex, tex_n);
     draw_hints(st, dl);
 }
 

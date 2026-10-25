@@ -41,6 +41,7 @@ add_library(bananatube_core STATIC
     src/net/invidious.c
     src/net/innertube.c
     src/net/resolver.c
+    src/net/resolvejob.c
     src/net/thumbnail.c
     src/net/searchjob.c
     src/net/thumbworker.c

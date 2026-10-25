@@ -206,9 +206,9 @@ void kb_draw(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, in
     for (int i = 0; i < KB_WIDE; i++) {
         int kx = left + i * (ww + KB_GAP);
         bool on = (k->row == KB_ROWS && k->wide == i);
-        bool go = (i == 3);
-        dl_rect_rounded(dl, kx, wy, ww, wide_h, 7, on ? t->accent : (go ? t->panel_hi : t->panel));
-        dl_text(dl, kx, wy, ww, wide_h, WIDE[k->layer][i], FONT_UI, 14,
-                on ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+        bool go = (i == 3);                       /* the search key: the one that does something */
+        dl_rect_rounded(dl, kx, wy, ww, wide_h, 7, (on || go) ? t->accent : t->panel);
+        dl_text(dl, kx, wy, ww, wide_h, WIDE[k->layer][i], FONT_UI, (on || go) ? 15 : 14,
+                (on || go) ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
     }
 }

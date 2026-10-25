@@ -15,6 +15,7 @@
 #include "font.h"
 #include "input/evdev.h"
 #include "net/resolver.h"
+#include "net/resolvejob.h"
 #include "net/worker.h"
 #include "ui/view.h"
 #ifdef BANANATUBE_MPV
@@ -149,32 +150,70 @@ static void history_path(const char *conf_path, char *out, size_t cap)
 }
 
 #ifdef BANANATUBE_MPV
-/* Resolve a video and put it on the top panel. `resume_at` is where the history says it got to. */
-static bool start_video(AppState *ui, const Conf *conf, Player *player, History *hist,
+/* What is being resolved, and what to do when it comes back. The resolve itself runs on its own thread
+ * (net/resolvejob.c) because it is the slowest thing the client does: a few HTTP calls and, when the backends
+ * cannot answer, one yt-dlp run. On this thread that was a second or two of frozen panels. */
+typedef struct {
+    bool   active;
+    char   id[VIDEO_ID_LEN];
+    char   title[TITLE_LEN];
+    char   channel[CHANNEL_LEN];
+    double resume_at;               /* where the history says it got to */
+} PendingPlay;
+
+/* Ask for a video. Returns true when the resolve started; the answer arrives in take_resolved(). */
+static bool start_video(AppState *ui, ResolveJob *job, PendingPlay *pending, const Conf *conf,
                         const char *id, const char *title, const char *channel, double resume_at)
 {
-    if (!player || !id || !*id) return false;
+    if (!ui || !job || !id || !*id) return false;
+    if (!resolve_job_begin(job, conf, id)) {
+        ui_set_status(ui, "A video is already being resolved.");
+        return false;
+    }
+    pending->active = true;
+    str_copy(pending->id, sizeof pending->id, id);
+    str_copy(pending->title, sizeof pending->title, title ? title : "");
+    str_copy(pending->channel, sizeof pending->channel, channel ? channel : "");
+    pending->resume_at = resume_at;
+    ui_set_status(ui, "Resolving\xE2\x80\xA6");
+    ui->dirty = true;
+    return true;
+}
 
+/* The answer, if one has arrived: the player opens, the history records it, and the bottom screen becomes the
+ * player's. Called from the loop, so it never blocks it. */
+static void take_resolved(AppState *ui, Player *player, History *hist, const Conf *conf,
+                          ResolveJob *job, PendingPlay *pending)
+{
     StreamUrl s;
-    ResolveStatus rs = resolver_resolve(conf, id, &s);
+    ResolveStatus rs;
+    if (!pending->active || !resolve_job_take(job, &s, &rs)) return;
+    pending->active = false;
+
     if (rs != RESOLVE_OK) {
         ui_set_status(ui, resolve_status_text(rs));
-        return false;
+        ui->dirty = true;
+        return;
+    }
+    if (!player) {
+        ui_set_status(ui, "This build has no player.");
+        ui->dirty = true;
+        return;
     }
 
-    player_set_start(player, resume_at);
+    player_set_start(player, pending->resume_at);
     if (!player_open(player, &s)) {
         ui_set_status(ui, player_error(player));
-        return false;
+        ui->dirty = true;
+        return;
     }
 
-    history_touch(hist, id, title, channel, s.height > 0 ? 0 : -1);
-    ui_set_playing(ui, title, channel);
+    history_touch(hist, pending->id, pending->title, pending->channel, s.height > 0 ? 0 : -1);
+    ui_set_playing(ui, pending->title, pending->channel);
     ui->playing.quality = (int)conf->quality;
     ui->playing.volume = player_volume(player);
     ui->playing.video_on = true;
     ui->dirty = true;
-    return true;
 }
 
 /* Where the video is, into the history. `write_file` also puts it on the card (a pause, a stop, an exit);
@@ -194,7 +233,8 @@ static void save_progress(AppState *ui, Player *player, History *hist, const cha
 
 /* X while a video plays: 360p -> 480p -> 720p, and back. It re-resolves at the new size and carries on from
  * where it was, which is the only honest way to change quality mid-stream. */
-static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hist, const char *conf_path)
+static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hist, const char *conf_path,
+                           ResolveJob *job, PendingPlay *pending)
 {
     switch ((int)conf->quality) {
     case QUALITY_360: conf->quality = QUALITY_480; break;
@@ -211,7 +251,7 @@ static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hi
     const SearchResult *r = &ui->results.item[ui->results.sel];
     double at = player_position(player);
     save_progress(ui, player, hist, conf_path, true);
-    return start_video(ui, conf, player, hist, r->id, r->title, r->channel, at);
+    return start_video(ui, job, pending, conf, r->id, r->title, r->channel, at);
 }
 #endif
 
@@ -248,6 +288,23 @@ static void log_memory(const char *when)
  *   bananatube --resolve <videoId>
  *   bananatube --keys "select,down,A,start" [--query "banana theme"] [--out DIR] [--plus]
  */
+/* The pictures the screen is showing, off the real network, with the real worker: enough to look at what the
+ * handheld would. It is a few seconds of waiting, which is why it is a command-line mode and not the app. */
+static void fetch_visible_thumbs(AppState *ui, const Conf *conf, BottomTex *pics)
+{
+    ThumbCache cache;
+    thumb_init(&cache, conf->cache_size);
+    ThumbWorker *worker = thumb_worker_start(3);
+    if (!worker) return;
+    request_visible_thumbs(ui, &cache, worker);
+    for (int i = 0; i < 40; i++) {
+        struct timespec ts = { 0, 100 * 1000 * 1000 };
+        nanosleep(&ts, NULL);
+        drain_thumbs(ui, &cache, worker, pics, THUMB_MAX_SLOTS);
+    }
+    thumb_worker_stop(worker);
+}
+
 static const char *env_conf_path(void)
 {
     const char *p = getenv("BANANATUBE_CONF");
@@ -336,20 +393,8 @@ static int cli_search(int argc, char **argv)
     str_copy(ui.query, sizeof ui.query, query);
     ui_set_results(&ui, found, n > 0 ? n : 0, n > 0 ? "" : message);
 
-    /* The pictures the handheld would have: a few seconds of the real worker thread, off the real network. */
     static BottomTex pics[THUMB_MAX_SLOTS];
-    ThumbCache cache;
-    thumb_init(&cache, conf.cache_size);
-    ThumbWorker *worker = thumb_worker_start(3);
-    if (worker) {
-        request_visible_thumbs(&ui, &cache, worker);
-        for (int i = 0; i < 40; i++) {
-            struct timespec ts = { 0, 100 * 1000 * 1000 };
-            nanosleep(&ts, NULL);
-            drain_thumbs(&ui, &cache, worker, pics, THUMB_MAX_SLOTS);
-        }
-        thumb_worker_stop(worker);
-    }
+    fetch_visible_thumbs(&ui, &conf, pics);
     FontCtx *fnt = shot_fonts();
     char path[600];
     snprintf(path, sizeof path, "%s/search.ppm", out ? out : "/tmp");
@@ -409,6 +454,8 @@ static int cli_keys(int argc, char **argv)
         ui_set_results(&ui, found, n > 0 ? n : 0, n > 0 ? "" : message);
         printf("query \"%s\": %d results%s\n", query, n > 0 ? n : 0, n < 0 ? " (nothing reachable)" : "");
     }
+
+    fetch_visible_thumbs(&ui, &conf, pics);      /* the real pictures, so a frame is what the handheld shows */
 
     FontCtx *fnt = shot_fonts();
     char path[600];
@@ -600,6 +647,9 @@ int main(int argc, char **argv)
     }
 
     SearchJob *search = search_job_start(&conf);
+    ResolveJob *resolve = resolve_job_start();
+    PendingPlay pending;
+    memset(&pending, 0, sizeof pending);
     ThumbWorker *thumbs = thumb_worker_start(2);
     ThumbCache cache;
     thumb_init(&cache, conf.cache_size);
@@ -626,7 +676,8 @@ int main(int argc, char **argv)
 
         /* A playing video sets the pace: mpv's pipe wakes us with each frame. */
         bool playing = ui.playing.active;
-        int timeout = playing ? 1000 : ((ui.searching || thumb_worker_pending(thumbs)) ? 100 : (dirty ? 0 : 300));
+        bool waiting = ui.searching || thumb_worker_pending(thumbs) || resolve_job_busy(resolve);
+        int timeout = playing ? 1000 : (waiting ? 100 : (dirty ? 0 : 300));
         int rc = poll(pfds, (nfds_t)nfds, timeout);
         if (rc < 0 && errno != EINTR) { log_line("poll: %s", strerror(errno)); break; }
 #ifdef BANANATUBE_MPV
@@ -706,13 +757,13 @@ int main(int argc, char **argv)
                     if (ui.history_sel >= 0 && ui.history_sel < history.count) {
                         const HistoryItem *it = &history.item[ui.history_sel];
                         /* carrying on where it stopped: what the watched list is for */
-                        if (start_video(&ui, &conf, player, &history, it->id, it->title, it->channel, it->position))
+                        if (start_video(&ui, resolve, &pending, &conf, it->id, it->title, it->channel, it->position))
                             break;
                     }
                 } else if (ui.results.count > 0) {
                     const SearchResult *r = &ui.results.item[ui.results.sel];
                     const HistoryItem *seen = history_find(&history, r->id);
-                    if (start_video(&ui, &conf, player, &history, r->id, r->title, r->channel,
+                    if (start_video(&ui, resolve, &pending, &conf, r->id, r->title, r->channel,
                                     seen ? seen->position : 0))
                         break;
                 }
@@ -742,7 +793,7 @@ int main(int argc, char **argv)
                 if (player) { player_set_volume(player, player_volume(player) - 5); ui_set_full_state(&ui, player_volume(player), ui.playing.quality, ui.playing.video_on, player_dropped(player)); }
                 break;
             case UI_QUALITY:
-                if (!switch_quality(&ui, &conf, player, &history, conf_path))
+                if (!switch_quality(&ui, &conf, player, &history, conf_path, resolve, &pending))
                     ui_set_status(&ui, "Could not change quality.");
                 ui.dirty = true;
                 break;
@@ -754,7 +805,7 @@ int main(int argc, char **argv)
                     if (ui.results.sel + 1 < ui.results.count && ui.playing.active) ui.results.sel++;
                     const SearchResult *r = &ui.results.item[ui.results.sel];
                     save_progress(&ui, player, &history, conf_path, true);
-                    start_video(&ui, &conf, player, &history, r->id, r->title, r->channel, 0);
+                    start_video(&ui, resolve, &pending, &conf, r->id, r->title, r->channel, 0);
                 }
                 break;
             case UI_SAVE_PROGRESS:
@@ -849,6 +900,9 @@ int main(int argc, char **argv)
         }
 #endif
 
+        /* A resolve that finished while we were idle: open it (or say why not), before the frame is drawn. */
+        take_resolved(&ui, player, &history, &conf, resolve, &pending);
+
         if (dirty) {
             int64_t t0 = now_ms();
             ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
@@ -910,6 +964,7 @@ int main(int argc, char **argv)
     tex_free_all(pics, THUMB_MAX_SLOTS);
     thumb_worker_stop(thumbs);
     search_job_stop(search);
+    resolve_job_stop(resolve);
     input_close(&in);
     bottom_fini(&top_ui, fd);
     bottom_fini(&bot_ui, fd);
