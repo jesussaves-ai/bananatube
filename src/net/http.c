@@ -14,6 +14,10 @@ typedef struct {
     size_t limit;
 } Sink;
 
+static bool transfer(const char *url, const char *body, const char *content_type, int timeout_ms,
+                     const char *extra_hdr, HttpResponse *out);
+static long ip_resolve(void);
+
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
     Sink *s = userdata;
@@ -36,7 +40,7 @@ static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 }
 
 static bool transfer(const char *url, const char *body, const char *content_type, int timeout_ms,
-                     HttpResponse *out)
+                     const char *extra_hdr, HttpResponse *out)
 {
     memset(out, 0, sizeof *out);
 
@@ -56,6 +60,7 @@ static bool transfer(const char *url, const char *body, const char *content_type
     curl_easy_setopt(c, CURLOPT_ACCEPT_ENCODING, "");          /* let curl ask for gzip/deflate */
     curl_easy_setopt(c, CURLOPT_USERAGENT, "BananaTube/0.1 (BananaOS; RG DS)");
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);                 /* the VPU and the threads: no SIGALRM */
+    curl_easy_setopt(c, CURLOPT_IPRESOLVE, ip_resolve());
     curl_easy_setopt(c, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(c, CURLOPT_SSL_VERIFYHOST, 2L);
 
@@ -66,10 +71,19 @@ static bool transfer(const char *url, const char *body, const char *content_type
         curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
     }
     if (content_type) hdr = curl_slist_append(hdr, content_type);
+    if (extra_hdr) hdr = curl_slist_append(hdr, extra_hdr);
     if (hdr) curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdr);
 
     CURLcode rc = curl_easy_perform(c);
     curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &out->status);
+
+    /* Where it went out from and to where: the pair that says whether a media URL's ip= parameter (which is
+     * inside its signature) matches the address it will actually be fetched over. */
+    char *ip = NULL;
+    if (curl_easy_getinfo(c, CURLINFO_LOCAL_IP, &ip) == CURLE_OK && ip && *out->local_ip == 0)
+        str_copy(out->local_ip, sizeof out->local_ip, ip);
+    if (curl_easy_getinfo(c, CURLINFO_PRIMARY_IP, &ip) == CURLE_OK && ip && *out->peer_ip == 0)
+        str_copy(out->peer_ip, sizeof out->peer_ip, ip);
 
     if (rc != CURLE_OK) {
         snprintf(out->error, sizeof out->error, "%s (curl %d)", curl_easy_strerror(rc), (int)rc);
@@ -99,14 +113,35 @@ void http_fini(void)
     curl_global_cleanup();
 }
 
+/* The address family requests are made from, and the switch the resolver flips. */
+static int g_ip_family = AF_UNSPEC;
+
+static long ip_resolve(void)
+{
+    if (g_ip_family == AF_INET)  return CURL_IPRESOLVE_V4;
+    if (g_ip_family == AF_INET6) return CURL_IPRESOLVE_V6;
+    return CURL_IPRESOLVE_WHATEVER;
+}
+
+void http_set_ip_family(int family)
+{
+    g_ip_family = family;
+}
+
+bool http_get_range(const char *url, int timeout_ms, HttpResponse *out)
+{
+    memset(out, 0, sizeof *out);
+    return transfer(url, NULL, NULL, timeout_ms, "Range: bytes=0-1", out);
+}
+
 bool http_get(const char *url, int timeout_ms, HttpResponse *out)
 {
-    return transfer(url, NULL, NULL, timeout_ms, out);
+    return transfer(url, NULL, NULL, timeout_ms, NULL, out);
 }
 
 bool http_post_json(const char *url, const char *body, int timeout_ms, HttpResponse *out)
 {
-    return transfer(url, body, NULL, timeout_ms, out);
+    return transfer(url, body, NULL, timeout_ms, NULL, out);
 }
 
 void http_response_free(HttpResponse *r)

@@ -189,6 +189,13 @@ Two things are worth knowing about it:
   Mesa is built for another SoC — the app logs it, browses normally on the CPU, and only the video is lost. It
   used to exit, which is what made it untestable anywhere but the handheld.
 
+## What the fourth run found
+
+| | |
+|---|---|
+| **Every frame repainted both panels in full** | my own bug, introduced with the page flips. I stored the *amplified* damage (this frame's changes **plus** what the hidden buffer missed) back as "what this buffer missed", so each frame added the last one's damage -- and past `MAX_DAMAGE` rectangles that collapses to one bounding box, which then repeated for ever. The two are separate now, and `damage_next()` is a pure function with a regression test that drives it round forty frames and requires the damage never to grow (`tests/test_drawlist.c`; verified to fail with the old rule). |
+| **The video resolved and still 403'd** | the URLs were **complete** (1118 and 1124 characters -- the `URL_LEN` fix was right but not the whole story). A stream URL is bound to the address that asked the API for it: the `ip=` parameter is **inside the signature**. On the desktop the fetch goes out from the same address and returns 206, logged as `fetches fine (HTTP 206 from <local> to <peer>)`. On the handheld the URL named its EUI-64 address while the fetch went out from another one. The resolver now **checks the URL it resolved** (one ranged GET from the same program) and, when it will not fetch, **asks again over IPv4** and uses that URL if it does. |
+
 ## What the third run found (all four of these were real)
 
 | | |

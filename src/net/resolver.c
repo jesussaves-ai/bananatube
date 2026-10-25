@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/socket.h>
 #include <string.h>
 
 #define FORMAT_MAX 32      /* 32 formats is a whole video's worth; URL_LEN is 2 KB each */
@@ -144,7 +145,9 @@ static bool ytdlp_resolve(const Conf *c, const char *video_id, char *out, size_t
 
 /* ---- the entry point ----------------------------------------------------------------------------------- */
 
-ResolveStatus resolver_resolve(const Conf *c, const char *video_id, StreamUrl *out)
+/* Asks the backends (and yt-dlp as a last resort) for the streams. Called twice at most, from
+ * resolver_resolve() below. */
+static ResolveStatus resolve_once(const Conf *c, const char *video_id, StreamUrl *out)
 {
     memset(out, 0, sizeof *out);
 
@@ -196,4 +199,45 @@ ResolveStatus resolver_resolve(const Conf *c, const char *video_id, StreamUrl *o
     }
 
     return worst;
+}
+
+/* Does the CDN actually serve this URL? A stream URL is bound to the address that asked the API for it -- the
+ * ip= parameter is inside its signature -- so a URL can be perfectly well formed and still be answered 403,
+ * which is exactly what "the video resolved and would not load" was: a complete 1118-character URL, and
+ * ffmpeg getting 403 Forbidden. Asking for one byte from the same program that asked for the URL is the only
+ * way to tell, and it costs a few milliseconds. */
+static bool stream_fetches(const Conf *c, const char *url)
+{
+    HttpResponse r;
+    if (!http_get_range(url, c->search_timeout_ms, &r)) {
+        log_line("resolver: the media URL did not fetch at all: %s", http_error(&r));
+        http_response_free(&r);
+        return false;
+    }
+    bool ok = (r.status == 200 || r.status == 206);
+    log_line("resolver: the media URL fetches %s (HTTP %ld from %s to %s)", ok ? "fine" : "badly",
+             r.status, r.local_ip[0] ? r.local_ip : "?", r.peer_ip[0] ? r.peer_ip : "?");
+    http_response_free(&r);
+    return ok;
+}
+
+ResolveStatus resolver_resolve(const Conf *c, const char *video_id, StreamUrl *out)
+{
+    http_set_ip_family(AF_UNSPEC);
+    ResolveStatus st = resolve_once(c, video_id, out);
+    if (st != RESOLVE_OK) return st;
+    if (stream_fetches(c, out->url)) return RESOLVE_OK;
+
+    /* The URL came from an address the CDN will not serve it to. Ask again over IPv4 -- the address family a
+     * handheld's media fetch usually ends up using, and the one that does not rotate -- and use that URL if it
+     * fetches. If the second attempt is no better, the first is returned as it was: the player's failure will
+     * say the same thing it said before, and the log above says why. */
+    log_line("resolver: asking again over IPv4, for a URL bound to that address");
+    http_set_ip_family(AF_INET);
+    StreamUrl second;
+    ResolveStatus st2 = resolve_once(c, video_id, &second);
+    bool ok = (st2 == RESOLVE_OK) && stream_fetches(c, second.url);
+    http_set_ip_family(AF_UNSPEC);
+    if (ok) { *out = second; return RESOLVE_OK; }
+    return st;
 }

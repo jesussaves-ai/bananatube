@@ -122,5 +122,37 @@ int main(void)
     q.color = 0xff111111;
     check(!op_equal(&p, &q));
 
+    /* ---- the double-buffer rule ----
+     * One small rectangle changing per frame on a two-buffer panel. The damage handed to the painter must stay
+     * the size of the change for ever. It did not: the union was stored back as "what this buffer missed", so
+     * each frame added the last one's damage, and past MAX_DAMAGE rectangles it collapsed to one bounding box
+     * -- which then collapsed again on every frame after it, repainting whole panels at ~100 ms each. The
+     * invariant is that the damage never grows with the number of frames, whatever the frames do. */
+    {
+        Damage missed, own, out, next_missed;
+        damage_reset(&missed);
+        int worst_rects = 0, worst_area = 0;
+        for (int frame = 0; frame < 40; frame++) {
+            damage_reset(&own);
+            /* each frame is next to the last, with a gap: they never merge into one, so with the old rule the
+             * missed set grew a rectangle a frame until it passed MAX_DAMAGE and collapsed to a bounding box
+             * that grew with every frame after it */
+            damage_add(&own, 10 + frame * 35, 20, 30, 40);
+            damage_next(&own, &missed, &out, &next_missed);
+            if (out.n > worst_rects) worst_rects = out.n;
+            int bx, by, bw, bh;
+            damage_bounds(&out, &bx, &by, &bw, &bh);
+            if (bw * bh > worst_area) worst_area = bw * bh;
+            check_int(next_missed.n, 1);                           /* a buffer misses this frame, only this */
+            missed = next_missed;
+        }
+        check(worst_rects <= 2);                                   /* this frame's plus the hidden one's */
+        check_int(missed.n, 1);
+        check(missed.r[0].w == 30 && missed.r[0].h == 40);
+        /* and the whole forty frames never add up to a panel: the moving rectangle is all that is ever
+         * repainted, give or take its own size */
+        check(worst_area < 100 * 60);
+    }
+
     test_done();
 }

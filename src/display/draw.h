@@ -77,6 +77,13 @@ void   damage_bounds(const Damage *d, int *x, int *y, int *w, int *h);
 /* True when any part of (x,y,w,h) is inside the damage (so a draw can skip itself). */
 bool   damage_touches(const Damage *d, int x, int y, int w, int h);
 
+/* The damage for the next frame of a double-buffered panel: this frame's `own` changes, plus whatever the
+ * buffer being drawn into missed while it was hidden behind the other one, and the set that buffer keeps from
+ * now on -- which is `own` and only `own`. Storing the union back made the damage grow into a full-panel
+ * repaint every frame: past MAX_DAMAGE rectangles it collapses to one bounding box, and that collapse then
+ * repeated for ever. Pure, so tests/test_drawlist.c drives it round and round. */
+void   damage_next(const Damage *own, const Damage *missed, Damage *out, Damage *missed_out);
+
 /* The op's box grown by `pad` (a shadow, an outline). */
 void   op_bounds(const DrawOp *op, int pad, int *x, int *y, int *w, int *h);
 

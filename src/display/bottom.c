@@ -43,19 +43,20 @@ void bottom_fini(Bottom *b, int fd)
 void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
                     const BottomTex *tex, int tex_n, float scale)
 {
-    Damage dmg;
+    Damage own, dmg;
     long painted = 0;
     int back = b->front ^ 1;
 
-    dl_diff(&b->prev, dl, &dmg);
+    dl_diff(&b->prev, dl, &own);           /* what this frame changed */
 
-    /* The buffer we are about to draw into has been hidden, so it is missing whatever changed since it was last
-     * on screen. With two buffers, that is every second frame's damage -- the panel would show stale patches
-     * without it. It is repainted from this frame's canvas, which is whole. */
-    for (int i = 0; i < b->missed[back].n; i++)
-        damage_add(&dmg, b->missed[back].r[i].x, b->missed[back].r[i].y,
-                   b->missed[back].r[i].w, b->missed[back].r[i].h);
-    damage_reset(&b->missed[back]);
+    /* What has to be repainted: this frame's own changes, plus whatever the buffer we are drawing into missed
+     * while it was hidden behind the other one (a flip alternates them, so each is missing the frame it sat
+     * out). It is repainted from this frame's canvas, which is whole.
+     *
+     * `own` and `dmg` are deliberately separate: storing the *amplified* set back as "what this buffer missed"
+     * fed the damage back into itself, and because more than MAX_DAMAGE rectangles collapse to one bounding
+     * box, that collapse then repeated every frame -- the whole panel repainted, both panels, for ever. */
+    damage_next(&own, &b->missed[back], &dmg, &b->missed[back]);
 
     if (b->have_prev && damage_empty(&dmg)) {
         b->last_pixels = 0;
@@ -108,8 +109,8 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
         drm_wait_vblank(fd, p);
     }
 
-    /* The buffer going behind the flip is the one that will miss the next frame's changes. */
-    b->missed[b->front] = dmg;
+    /* The buffer going behind the flip misses *this frame's* changes -- and only those. */
+    b->missed[b->front] = own;
     b->front = back;
     b->prev = *dl;
     b->have_prev = true;

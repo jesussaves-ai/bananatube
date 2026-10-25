@@ -223,6 +223,16 @@ DrawOp *dl_image(DrawList *dl, int x, int y, int w, int h, int image, Fit fit, u
 
 #define LOOKAHEAD 3
 
+void damage_next(const Damage *own, const Damage *missed, Damage *out, Damage *missed_out)
+{
+    *out = *own;
+    if (missed) {
+        for (int i = 0; i < missed->n; i++)
+            damage_add(out, missed->r[i].x, missed->r[i].y, missed->r[i].w, missed->r[i].h);
+    }
+    *missed_out = *own;
+}
+
 static void damage_op(Damage *out, const DrawOp *op)
 {
     damage_add(out, op->x, op->y, op->w, op->h);
