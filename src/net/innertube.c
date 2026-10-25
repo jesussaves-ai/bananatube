@@ -245,6 +245,12 @@ static Format format_from_innertube(const cJSON *o)
     char mime[64] = "", url[URL_LEN] = "", q[24] = "";
     json_str(o, "mimeType", mime, sizeof mime);
     json_str(o, "url", url, sizeof url);
+    {   /* a URL longer than the buffer would be silently cut, and a cut URL is a 403 from the CDN */
+        const cJSON *u = cJSON_GetObjectItemCaseSensitive(o, "url");
+        if (cJSON_IsString(u) && u->valuestring && strlen(u->valuestring) >= sizeof url)
+            log_line("innertube: the stream URL is %u characters, longer than %u: it would be cut",
+                     (unsigned)strlen(u->valuestring), (unsigned)sizeof url);
+    }
     f.has_url = url[0] != '\0';               /* signatureCipher instead: left false */
     str_copy(f.url, sizeof f.url, url);
 

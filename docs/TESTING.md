@@ -154,6 +154,9 @@ over the real network — and write pictures you can look at. What they cannot t
 the video unit.
 
 ```sh
+# how long a frame takes to paint and what it spends it on, by kind of draw
+bananatube --bench results 50 [plus] [--query "banana theme"]
+
 # a real search: a table of results, and both panels drawn as the handheld would have them
 bananatube --search "banana theme" --out /tmp/bt --frames
 
@@ -185,6 +188,19 @@ Two things are worth knowing about it:
 - **The real client runs without EGL now.** If `gbm_egl_init()` fails — QEMU's virtio device, a machine whose
   Mesa is built for another SoC — the app logs it, browses normally on the CPU, and only the video is lost. It
   used to exit, which is what made it untestable anywhere but the handheld.
+
+## What the third run found (all four of these were real)
+
+| | |
+|---|---|
+| **Videos resolved and then 403'd** | `ffmpeg: HTTP error 403 Forbidden` on the googlevideo URL. `URL_LEN` was 1024, so the buffers held 1023 characters, and every stream URL for this client is **1102–1130**: the signature was cut off. 2048 now, and both parsers log it if a URL ever again does not fit. Checked from the desktop: the same URL fetches **206**. |
+| **The keyboard typed several letters and would not delete** | `TouchEvent.down` was sticky: set on a touch and never cleared, so **every later event — including every button press — re-ran the keyboard tap at the last finger position**. B added a letter and then deleted it, which reads as delete doing nothing. It is an edge now (set per read, cleared at the start of every dispatch, cleared by a lift). |
+| **Typing repeated itself** | the kernel's autorepeat arrives as `value == 2` and the app treated it as a fresh press. Only the D-pad repeats now, which is what banana-ui does. |
+| **The UI took 185–500 ms a frame, and 1.5 s on a transition** | a full `drmModeSetCrtc` on **every frame**, on both panels. banana-ui uses **`drmModePageFlip`** after the first frame; the same now, with the double-buffer "missed damage" bookkeeping a flip needs (the hidden buffer is missing the frames it sat out) and `drm_handle_events()` in the poll loop, without which the flip counter never comes down. Falls back to a modeset when a flip cannot be queued, so the worst case is the old behaviour. |
+
+The last one is the only fix here that cannot be checked on a desktop — the display belongs to the desktop's
+compositor — so it wants a device test. Everything else was verified from here: the stream URL fetches 206, the
+keyboard and repeat logic is unit-tested, and the render cost is measured with `--bench`.
 
 ## What the first run on the hardware found
 

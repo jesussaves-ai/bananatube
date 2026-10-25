@@ -11,7 +11,9 @@ bool bottom_init(Bottom *b, int fd, const DrmPanel *p)
     memset(b, 0, sizeof *b);
     b->w = p->w;
     b->h = p->h;
-    b->page = 0;
+    b->front = 0;
+    damage_reset(&b->missed[0]);
+    damage_reset(&b->missed[1]);
     b->canvas = calloc((size_t)p->w * p->h, sizeof(uint32_t));
     if (!b->canvas) return false;
     for (int i = 0; i < 2; i++)
@@ -43,7 +45,18 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
 {
     Damage dmg;
     long painted = 0;
+    int back = b->front ^ 1;
+
     dl_diff(&b->prev, dl, &dmg);
+
+    /* The buffer we are about to draw into has been hidden, so it is missing whatever changed since it was last
+     * on screen. With two buffers, that is every second frame's damage -- the panel would show stale patches
+     * without it. It is repainted from this frame's canvas, which is whole. */
+    for (int i = 0; i < b->missed[back].n; i++)
+        damage_add(&dmg, b->missed[back].r[i].x, b->missed[back].r[i].y,
+                   b->missed[back].r[i].w, b->missed[back].r[i].h);
+    damage_reset(&b->missed[back]);
+
     if (b->have_prev && damage_empty(&dmg)) {
         b->last_pixels = 0;
         return;                                          /* nothing changed: the panel keeps its pixels */
@@ -71,8 +84,8 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
     b->last_draws = dl->n;
     b->last_pixels = painted;
 
-    /* Copy the damaged rectangles into the spare scanout buffer and flip to it. */
-    DumbBuf *dst = &b->buf[(b->page + 1) % 2];
+    /* Copy the damaged rectangles into the spare scanout buffer and put it up. */
+    DumbBuf *dst = &b->buf[back];
     for (int i = 0; i < dmg.n; i++) {
         int dx = render_scale(dmg.r[i].x, scale), dy = render_scale(dmg.r[i].y, scale);
         int dw = render_scale(dmg.r[i].w, scale), dh = render_scale(dmg.r[i].h, scale);
@@ -86,9 +99,18 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
                    b->canvas + (size_t)(dy + yy) * b->w + dx, (size_t)dw * 4);
     }
 
-    drm_set_crtc(fd, p, dst);
-    drm_wait_vblank(fd, p);
-    b->page = (b->page + 1) % 2;
+    /* A page flip when one can be queued -- the CRTC switches at the next vblank instead of being
+     * reprogrammed, which is the difference between a frame costing microseconds and costing a modeset. A
+     * flip already in flight, or a lost master, falls back to setting the CRTC directly: never skip the frame,
+     * because the frame is already drawn and the app believes it is on screen. */
+    if (b->pending > 0 || !drm_page_flip(fd, p, dst, &b->pending)) {
+        drm_set_crtc(fd, p, dst);
+        drm_wait_vblank(fd, p);
+    }
+
+    /* The buffer going behind the flip is the one that will miss the next frame's changes. */
+    b->missed[b->front] = dmg;
+    b->front = back;
     b->prev = *dl;
     b->have_prev = true;
 }

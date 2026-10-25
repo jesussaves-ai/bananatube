@@ -22,8 +22,12 @@ typedef struct {
 } KeyEvent;
 
 typedef struct {
+    /* A touch-down *edge* in this batch of events, not "a finger is on the glass": it is cleared at the start
+     * of every dispatch and set when a release or a new touch arrives. A flag that stayed true meant the
+     * keyboard's tap was re-run for every later event -- including every button press -- so the last key typed
+     * itself again and again and delete looked broken. */
     bool down;
-    int  x, y;             /* screen units (0..639, 0..479), after the axis range is mapped */
+    int  x, y;             /* screen units (0..639, 0..479), after the axis range is mapped; kept between reads */
 } TouchEvent;
 
 typedef struct {

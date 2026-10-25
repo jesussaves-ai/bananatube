@@ -122,6 +122,10 @@ int input_dispatch(InputCtx *in, struct pollfd *pfds, KeyEvent *keys, int key_ma
 {
     int nkeys = 0;
 
+    /* The tap is an edge, so it is cleared here and only set by a real touch event below. The position is
+     * kept: a tap is reported with the last place the finger was. */
+    if (touch) touch->down = false;
+
     for (int i = 0; i < in->n; i++) {
         if (!(pfds[i].revents & POLLIN)) continue;
         struct input_event ev;
@@ -143,6 +147,8 @@ int input_dispatch(InputCtx *in, struct pollfd *pfds, KeyEvent *keys, int key_ma
                         if (touch) touch->x = axis_to_screen(ev.value, in->tx_min, in->tx_max, SCREEN_W);
                     } else if (ev.code == ABS_MT_POSITION_Y || ev.code == ABS_Y) {
                         if (touch) touch->y = axis_to_screen(ev.value, in->ty_min, in->ty_max, SCREEN_H);
+                    } else if (ev.code == ABS_MT_TRACKING_ID && ev.value < 0) {
+                        if (touch) touch->down = false;      /* lifted: type-B panels report this, not BTN_TOUCH */
                     }
                 } else if (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y) {
                     /* a USB pad's hat: report it as a D-pad press */

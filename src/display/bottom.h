@@ -17,7 +17,9 @@
 
 typedef struct {
     DumbBuf   buf[2];
-    int       page;
+    int       front;           /* which buffer the CRTC is scanning out */
+    int       pending;         /* page flips in flight (drm_handle_events clears them) */
+    Damage    missed[2];       /* what each buffer missed while it was hidden: the other one was on screen */
     uint32_t *canvas;          /* cached memory: the composed frame */
     int       w, h;
     DrawList  prev;            /* the last frame, for the damage diff */

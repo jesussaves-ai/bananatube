@@ -77,6 +77,13 @@ static Format format_from_invidious(const cJSON *o)
 
     json_str(o, "url", url, sizeof url);
     f.has_url = url[0] != '\0';          /* a signatureCipher instead: left false, never solved here */
+    {   /* a URL that does not fit would be cut, and a cut URL is a 403 from the CDN */
+        const cJSON *u = cJSON_GetObjectItemCaseSensitive(o, "url");
+        if (cJSON_IsObject(o) && cJSON_IsString(u) && u->valuestring &&
+            strlen(u->valuestring) >= sizeof url)
+            log_line("invidious: the stream URL is %u characters, longer than %u: it would be cut",
+                     (unsigned)strlen(u->valuestring), (unsigned)sizeof url);
+    }
     str_copy(f.url, sizeof f.url, url);
 
     f.width  = json_int(o, "width", 0);

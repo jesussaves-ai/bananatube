@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FORMAT_MAX 64
+#define FORMAT_MAX 32      /* 32 formats is a whole video's worth; URL_LEN is 2 KB each */
 
 const char *resolve_status_text(ResolveStatus s)
 {

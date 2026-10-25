@@ -21,7 +21,10 @@
 #define VIDEO_ID_LEN 16
 #define TITLE_LEN    160
 #define CHANNEL_LEN  80
-#define URL_LEN      1024
+/* A googlevideo URL is 1100-1130 characters for the clients that hand out plain ones, so 1024 was carrying a
+ * truncated URL -- and a truncated signature is what a 403 Forbidden was: every video resolved and then failed
+ * to load. The parsers log it if it ever happens again rather than cutting silently. */
+#define URL_LEN      2048
 #define DESC_LEN     384
 
 typedef struct {

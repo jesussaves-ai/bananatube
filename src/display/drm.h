@@ -43,6 +43,14 @@ void dumb_free(int fd, DumbBuf *b);
 /* Points the CRTC at `b`. Called once at start-up and after every page flip. */
 bool drm_set_crtc(int fd, const DrmPanel *p, const DumbBuf *b);
 
+/* The fast way to put the next buffer up: the CRTC switches at the next vblank instead of being reprogrammed.
+ * `pending` is a counter the flip handler decrements -- drm_handle_events() is what lets it come back down, so
+ * a caller that flips has to drain the events. banana-ui's kms.cpp does exactly this, and a full
+ * drmModeSetCrtc on every frame (which is what this did) is what made the UI unusable on the handheld. */
+bool drm_page_flip(int fd, const DrmPanel *p, const DumbBuf *b, int *pending);
+/* Drains whatever the DRM device has to say (flip completions). Call it when the fd polls readable. */
+void drm_handle_events(int fd);
+
 /* Waits for the next vblank on the panel's CRTC, so a flip never races the scan-out. */
 bool drm_wait_vblank(int fd, const DrmPanel *p);
 

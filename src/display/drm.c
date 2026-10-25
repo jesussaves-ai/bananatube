@@ -196,6 +196,29 @@ bool drm_set_crtc(int fd, const DrmPanel *p, const DumbBuf *b)
     return true;
 }
 
+/* A flip finished: the display is ours again. */
+static void flip_done(int fd, unsigned seq, unsigned sec, unsigned usec, void *data)
+{
+    (void)fd; (void)seq; (void)sec; (void)usec;
+    int *pending = data;
+    if (*pending > 0) (*pending)--;
+}
+
+bool drm_page_flip(int fd, const DrmPanel *p, const DumbBuf *b, int *pending)
+{
+    if (!pending) return false;
+    return drmModePageFlip(fd, p->crtc, b->fb, DRM_MODE_PAGE_FLIP_EVENT, pending) == 0;
+}
+
+void drm_handle_events(int fd)
+{
+    drmEventContext ev;
+    memset(&ev, 0, sizeof ev);
+    ev.version = DRM_EVENT_CONTEXT_VERSION;
+    ev.page_flip_handler = flip_done;
+    drmHandleEvent(fd, &ev);
+}
+
 bool drm_wait_vblank(int fd, const DrmPanel *p)
 {
     (void)p;   /* both panels run at 60 Hz and we only need to pace a frame, not to hit one CRTC's edge */

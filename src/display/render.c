@@ -1,9 +1,11 @@
 /* render.c -- the software renderer for the bottom screen. See render.h. */
 #include "display/render.h"
+#include "display/renderstats.h"
 #include "util.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* ---- the software renderer: one op at a time, clipped ------------------------------------------------- */
 
@@ -110,11 +112,32 @@ static void draw_image(RenderCanvas *b, const DrawOp *op, const BottomTex *tex, 
     }
 }
 
+/* Where a frame's time goes, by kind of drawing. render_ops() is the whole of a panel's paint, so timing
+ * here answers "is it the text, the pictures or the fills" for any frame, on any machine. */
+static double g_us[3];
+static long   g_calls[3];
+
+double render_now_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec / 1e3;
+}
+
+void render_stats_reset(void) { for (int i = 0; i < 3; i++) { g_us[i] = 0; g_calls[i] = 0; } }
+void render_stats(double *ms, long *calls)
+{
+    for (int i = 0; i < 3; i++) { ms[i] = g_us[i] / 1000.0; calls[i] = g_calls[i]; }
+}
+
 static void draw_op(RenderCanvas *b, const DrawOp *op, FontCtx *fnt, const BottomTex *tex, int tex_n,
                     int cx, int cy, int cw, int ch, float scale)
 {
+    double t0 = render_now_us();
     int x = render_scale(op->x, scale), y = render_scale(op->y, scale), w = render_scale(op->w, scale), h = render_scale(op->h, scale);
 
+    double t1;
+    (void)t1;
     switch (op->kind) {
     case OP_RECT:
         fill_rect(b, x, y, w, h, render_scale(op->radius, scale), op->color, cx, cy, cw, ch);
@@ -137,6 +160,8 @@ static void draw_op(RenderCanvas *b, const DrawOp *op, FontCtx *fnt, const Botto
         draw_image(b, op, tex, tex_n, cx, cy, cw, ch, scale);
         break;
     }
+    g_us[op->kind] += render_now_us() - t0;
+    g_calls[op->kind]++;
 }
 
 /* ---- the whole frame, with no panel under it ---------------------------------------------------------- */

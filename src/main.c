@@ -9,6 +9,7 @@
  */
 #include "conf.h"
 #include "display/render.h"
+#include "display/renderstats.h"
 #include "display/bottom.h"
 #include "display/drm.h"
 #include "display/gbm_egl.h"
@@ -352,6 +353,87 @@ static const char *view_name(View v)
     }
 }
 
+/* How long a frame takes to paint and what it spends it on, by kind of draw. The same frame n times, so the
+ * numbers are the painting and not the starting up. This is the measurement that says whether "the UI is
+ * slow" is the text, the pictures or the fills -- on this machine, which is the only one that can run it
+ * without a card. */
+static int cli_bench(int argc, char **argv)
+{
+    const char *view = (argc > 2 && argv[2][0] != '-') ? argv[2] : "results";
+    const char *query = arg_value(argc, argv, "--query");
+    int n = 30;
+    bool plus = false;
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "plus") == 0 || strcmp(argv[i], "--plus") == 0) plus = true;
+        if (argv[i][0] >= '1' && argv[i][0] <= '9') n = atoi(argv[i]);
+    }
+
+    Conf conf;
+    if (!conf_load(&conf, env_conf_path())) log_line("no settings: using the defaults");
+
+    AppState ui;
+    ui_init(&ui);
+    ui.theme = ui_theme();
+    static BottomTex pics[THUMB_MAX_SLOTS];
+
+    if (query && *query) {
+        SearchResult found[SEARCH_RESULTS_MAX];
+        char message[160] = "";
+        int got = backend_search_auto(&conf, query, found, SEARCH_RESULTS_MAX, message, sizeof message);
+        str_copy(ui.query, sizeof ui.query, query);
+        ui_set_results(&ui, found, got > 0 ? got : 0, got > 0 ? "" : message);
+        fetch_visible_thumbs(&ui, &conf, pics);
+    } else if (strcmp(view, "keyboard") == 0) {
+        ui.view = VIEW_KEYBOARD;
+        str_copy(ui.query, sizeof ui.query, "banana theme");
+    } else if (strcmp(view, "playing") == 0) {
+        ui_set_playing(&ui, "Making a theme for BananaOS, start to finish", "Banana Dev");
+        ui_set_playing_state(&ui, 4 * 60 + 12, 12 * 60 + 34, false, false, 854, 480);
+        ui_set_full_state(&ui, 70, 480, true, 0);
+    }
+
+    FontCtx *fnt = shot_fonts();
+    int w = plus ? 1024 : 640, h = plus ? 768 : 480;
+    float scale = plus ? 1.6f : 1.0f;
+    uint32_t *canvas = calloc((size_t)w * h, sizeof(uint32_t));
+    if (!canvas) { font_free(fnt); return 1; }
+
+    DrawList dl_top, dl_bot;
+    double best = 1e9, total = 0;
+    render_stats_reset();
+    for (int i = 0; i < n; i++) {
+        ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+        ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+        double t0 = render_now_us();
+        render_full(canvas, w, h, fnt, &dl_top, pics, THUMB_MAX_SLOTS, scale);
+        render_full(canvas, w, h, fnt, &dl_bot, pics, THUMB_MAX_SLOTS, scale);
+        double ms = (render_now_us() - t0) / 1000.0;
+        total += ms;
+        if (ms < best) best = ms;
+    }
+    double ms[3];
+    long calls[3];
+    render_stats(ms, calls);
+
+    printf("bench %s at %dx%d, scale %.1f, %d frames (a full repaint of both panels)\n", view, w, h, scale, n);
+    printf("  frame:   avg %6.2f ms   best %6.2f ms   (%.2f Mpx/ms over both panels)\n",
+           total / n, best, (2.0 * w * h / 1e6) / (total / n));
+    printf("  rects:   %6.2f ms  %6ld draws\n", ms[0], calls[0]);
+    printf("  text:    %6.2f ms  %6ld draws\n", ms[1], calls[1]);
+    printf("  images:  %6.2f ms  %6ld draws\n", ms[2], calls[2]);
+    printf("  lists:   top %d draws, bottom %d draws\n", dl_top.n, dl_bot.n);
+    if (getenv("BANANATUBE_DUMP")) {
+        double f = 0;
+        double l = render_now_us();
+        for (int i = 0; i < 200; i++) { ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS); ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS); }
+        f = (render_now_us() - l) / 1000.0 / 200.0;
+        printf("  (building the two draw lists: %.3f ms a frame)\n", f);
+    }
+    free(canvas);
+    font_free(fnt);
+    return 0;
+}
+
 /* A search over the real network, printed as a table. Exit status: 0 with results, 1 with none, 2 when
  * nothing could be reached -- so a script can tell the three apart. */
 static int cli_search(int argc, char **argv)
@@ -421,8 +503,8 @@ static int cli_resolve(int argc, char **argv)
     if (rs != RESOLVE_OK) return 2;
     printf("  %dx%d @%d fps, %s, %s\n", s.width, s.height, s.fps,
            s.vcodec[0] ? s.vcodec : "?", s.muxed ? "one stream" : "video + audio");
-    printf("  url: %.72s%s\n", s.url, strlen(s.url) > 72 ? "..." : "");
-    if (s.audio_url[0]) printf("  audio: %.72s...\n", s.audio_url);
+    printf("  url: %s\n", s.url);
+    if (s.audio_url[0]) printf("  audio: %s\n", s.audio_url);
     return 0;
 }
 
@@ -531,6 +613,7 @@ int main(int argc, char **argv)
     if (argc > 1 && strcmp(argv[1], "--search") == 0)  return argc > 2 ? cli_search(argc, argv) : 2;
     if (argc > 1 && strcmp(argv[1], "--resolve") == 0) return cli_resolve(argc, argv);
     if (argc > 1 && strcmp(argv[1], "--keys") == 0)    return argc > 2 ? cli_keys(argc, argv) : 2;
+    if (argc > 1 && strcmp(argv[1], "--bench") == 0)   return cli_bench(argc, argv);
 
     if (argc > 1 && strcmp(argv[1], "--shot") == 0) {
         const char *out = argc > 2 ? argv[2] : "/tmp/bananatube.ppm";
@@ -684,6 +767,10 @@ int main(int argc, char **argv)
         if (wake_at >= 0 && (pfds[wake_at].revents & POLLIN)) player_wake_drain(player);
 #endif
 
+        /* Page flips finish here: without draining them the flip counter never comes back down and the
+         * panels stop being updated at all. */
+        if (pfds[0].revents & POLLIN) drm_handle_events(fd);
+
         int nk = input_dispatch(&in, pfds + 1, keys, INPUT_EVENTS_MAX, &touch);
 
         /* A tap becomes the same key presses a button makes, so one place decides what a key means -- and so
@@ -731,6 +818,14 @@ int main(int argc, char **argv)
 
         for (int i = 0; i < nk && !g_quit; i++) {
             if (!keys[i].down) continue;
+
+            /* The kernel's autorepeat, and only for the D-pad. A repeat is not a new press: holding A typed a
+             * letter per repeat, and holding B deleted a letter per repeat, which reads as the keyboard doing
+             * something of its own. banana-ui drops repeats for the same reason. */
+            if (keys[i].repeat && keys[i].key != BK_UP && keys[i].key != BK_DOWN &&
+                                   keys[i].key != BK_LEFT && keys[i].key != BK_RIGHT)
+                continue;
+
             log_line("key %s", key_name(keys[i].key));
             switch (ui_key(&ui, keys[i].key)) {
             case UI_QUIT: g_quit = 1; break;
