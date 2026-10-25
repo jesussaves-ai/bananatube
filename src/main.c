@@ -71,6 +71,8 @@ typedef enum { SHOT_VIEW = 0, SHOT_TOP, SHOT_BOTTOM, SHOT_BOTH } ShotPanel;
 
 static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history,
                 ShotPanel panel);
+static FontCtx *shot_fonts(void);
+static bool save_panels(const char *path, AppState *ui, FontCtx *fnt, BottomTex *pics, bool plus, ShotPanel panel);
 
 /* ---- the pictures ---------------------------------------------------------------------------------------
  * One slot per thumbnail, in ordinary memory: the bottom panel is drawn by the CPU, so a decoded picture is a
@@ -235,6 +237,235 @@ static void log_memory(const char *when)
     log_line("memory (%s): bananatube %ld kB resident, %ld kB left on the device", when, rss, avail);
 }
 
+
+/* ---- testing without the handheld -----------------------------------------------------------------------
+ * The real client with no DRM, no EGL, no decoder and no input devices: the same AppState, the same ui_key,
+ * the same draw lists, the same backends over the network. What it cannot test is the panels, the GPU and the
+ * video unit -- everything else about the app is here, and it is the only way to iterate on a UI bug without
+ * carrying a card to a handheld and back.
+ *
+ *   bananatube --search "banana theme" [--out DIR] [--plus] [--frames]
+ *   bananatube --resolve <videoId>
+ *   bananatube --keys "select,down,A,start" [--query "banana theme"] [--out DIR] [--plus]
+ */
+static const char *env_conf_path(void)
+{
+    const char *p = getenv("BANANATUBE_CONF");
+    return (p && *p) ? p : "bananatube.conf";
+}
+
+static const char *arg_value(int argc, char **argv, const char *name)
+{
+    for (int i = 2; i < argc - 1; i++)
+        if (strcmp(argv[i], name) == 0) return argv[i + 1];
+    return NULL;
+}
+
+static const char *action_name(UiAction a)
+{
+    switch (a) {
+    case UI_NONE:           return "-";
+    case UI_PLAY:           return "play";
+    case UI_SEARCH:         return "search";
+    case UI_STOP:           return "stop";
+    case UI_PAUSE:          return "pause";
+    case UI_SEEK_BACK:      return "seek back";
+    case UI_SEEK_FORWARD:   return "seek forward";
+    case UI_VOLUME_UP:      return "volume up";
+    case UI_VOLUME_DOWN:    return "volume down";
+    case UI_QUALITY:        return "quality";
+    case UI_NEXT_VIDEO:     return "next";
+    case UI_PREV_VIDEO:     return "previous";
+    case UI_THUMBS:         return "thumbs";
+    case UI_SAVE_PROGRESS:  return "save progress";
+    case UI_HISTORY:        return "history";
+    case UI_QUIT:           return "quit";
+    default:                return "?";
+    }
+}
+
+static const char *view_name(View v)
+{
+    switch (v) {
+    case VIEW_RESULTS:  return "results";
+    case VIEW_KEYBOARD: return "keyboard";
+    case VIEW_PLAYING:  return "playing";
+    case VIEW_HISTORY:  return "history";
+    default:            return "?";
+    }
+}
+
+/* A search over the real network, printed as a table. Exit status: 0 with results, 1 with none, 2 when
+ * nothing could be reached -- so a script can tell the three apart. */
+static int cli_search(int argc, char **argv)
+{
+    const char *query = argv[2];
+    const char *out = arg_value(argc, argv, "--out");
+    bool plus = false, frames = false;
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--plus") == 0) plus = true;
+        if (strcmp(argv[i], "--frames") == 0) frames = true;
+    }
+
+    Conf conf;
+    const char *conf_path = env_conf_path();
+    if (!conf_load(&conf, conf_path)) log_line("no settings at %s: using the defaults", conf_path);
+    log_line("backend = %s, instance = %s", conf_backend_name(conf.backend), conf.instance[0] ? conf.instance : "(built-in list)");
+
+    SearchResult found[SEARCH_RESULTS_MAX];
+    char message[160] = "";
+    int64_t t0 = now_ms();
+    int n = backend_search_auto(&conf, query, found, SEARCH_RESULTS_MAX, message, sizeof message);
+    int64_t ms = now_ms() - t0;
+
+    if (n < 0) { printf("search \"%s\": FAILED after %lld ms -- %s\n", query, (long long)ms, message); return 2; }
+    printf("search \"%s\": %d results in %lld ms\n", query, n, (long long)ms);
+    for (int i = 0; i < n; i++) {
+        char dur[16], views[24];
+        fmt_duration(found[i].duration_sec, dur, sizeof dur);
+        fmt_views(found[i].views, views, sizeof views);
+        printf("  %2d  %-11s %8s  %-8s  %s  [%s]\n", i + 1, found[i].id, dur, views,
+               found[i].title, found[i].channel);
+    }
+    if (n == 0) printf("  (%s)\n", message);
+    if (!frames) return n > 0 ? 0 : 1;
+
+    AppState ui;
+    ui_init(&ui);
+    ui.theme = ui_theme();
+    str_copy(ui.query, sizeof ui.query, query);
+    ui_set_results(&ui, found, n > 0 ? n : 0, n > 0 ? "" : message);
+
+    /* The pictures the handheld would have: a few seconds of the real worker thread, off the real network. */
+    static BottomTex pics[THUMB_MAX_SLOTS];
+    ThumbCache cache;
+    thumb_init(&cache, conf.cache_size);
+    ThumbWorker *worker = thumb_worker_start(3);
+    if (worker) {
+        request_visible_thumbs(&ui, &cache, worker);
+        for (int i = 0; i < 40; i++) {
+            struct timespec ts = { 0, 100 * 1000 * 1000 };
+            nanosleep(&ts, NULL);
+            drain_thumbs(&ui, &cache, worker, pics, THUMB_MAX_SLOTS);
+        }
+        thumb_worker_stop(worker);
+    }
+    FontCtx *fnt = shot_fonts();
+    char path[600];
+    snprintf(path, sizeof path, "%s/search.ppm", out ? out : "/tmp");
+    save_panels(path, &ui, fnt, pics, plus, SHOT_BOTH);
+    font_free(fnt);
+    tex_free_all(pics, THUMB_MAX_SLOTS);
+    return n > 0 ? 0 : 1;
+}
+
+/* One video's stream URL, resolved the way pressing A does. This is the half of playing that the UI cannot
+ * show: if this fails, no player would have worked either, and the log here says which part failed. */
+static int cli_resolve(int argc, char **argv)
+{
+    if (argc < 3) { fprintf(stderr, "usage: bananatube --resolve <videoId>\n"); return 2; }
+    Conf conf;
+    if (!conf_load(&conf, env_conf_path())) log_line("no settings: using the defaults");
+
+    StreamUrl s;
+    int64_t t0 = now_ms();
+    ResolveStatus rs = resolver_resolve(&conf, argv[2], &s);
+    int64_t ms = now_ms() - t0;
+
+    printf("resolve %s: %s after %lld ms\n", argv[2], resolve_status_text(rs), (long long)ms);
+    if (rs != RESOLVE_OK) return 2;
+    printf("  %dx%d @%d fps, %s, %s\n", s.width, s.height, s.fps,
+           s.vcodec[0] ? s.vcodec : "?", s.muxed ? "one stream" : "video + audio");
+    printf("  url: %.72s%s\n", s.url, strlen(s.url) > 72 ? "..." : "");
+    if (s.audio_url[0]) printf("  audio: %.72s...\n", s.audio_url);
+    return 0;
+}
+
+/* Drives the real UI with a script of key names -- the same words the log prints -- and writes a frame after
+ * every step. This is --shot for a sequence: it catches the state machine, the layout, the draw lists and the
+ * actions, on a machine with no panels. */
+static int cli_keys(int argc, char **argv)
+{
+    const char *script = argv[2];
+    const char *out = arg_value(argc, argv, "--out");
+    const char *query = arg_value(argc, argv, "--query");
+    bool plus = false;
+    for (int i = 2; i < argc; i++) if (strcmp(argv[i], "--plus") == 0) plus = true;
+
+    Conf conf;
+    const char *conf_path = env_conf_path();
+    if (!conf_load(&conf, conf_path)) log_line("no settings at %s: using the defaults", conf_path);
+
+    AppState ui;
+    ui_init(&ui);
+    ui.theme = ui_theme();
+    static BottomTex pics[THUMB_MAX_SLOTS];
+
+    if (query && *query) {
+        SearchResult found[SEARCH_RESULTS_MAX];
+        char message[160] = "";
+        int n = backend_search_auto(&conf, query, found, SEARCH_RESULTS_MAX, message, sizeof message);
+        str_copy(ui.query, sizeof ui.query, query);
+        ui_set_results(&ui, found, n > 0 ? n : 0, n > 0 ? "" : message);
+        printf("query \"%s\": %d results%s\n", query, n > 0 ? n : 0, n < 0 ? " (nothing reachable)" : "");
+    }
+
+    FontCtx *fnt = shot_fonts();
+    char path[600];
+    snprintf(path, sizeof path, "%s/00-start.ppm", out ? out : "/tmp");
+    save_panels(path, &ui, fnt, pics, plus, SHOT_BOTH);
+
+    char buf[512];
+    str_copy(buf, sizeof buf, script);
+    int step = 0;
+    for (char *tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {
+        while (*tok == ' ') tok++;
+        BananaKey k = banana_key_from_name(tok);
+        step++;
+        if (k == BK_NONE) { printf("  %2d. \"%s\" is not a key name\n", step, tok); continue; }
+
+        UiAction a = ui_key(&ui, k);
+        printf("  %2d. %-8s -> %-14s view %s, %d results, sel %d, history %d\n", step, key_name(k),
+               action_name(a), view_name(ui.view), ui.results.count, ui.results.sel,
+               ui.history ? ui.history->count : 0);
+
+        if (a == UI_SEARCH) {
+            SearchResult found[SEARCH_RESULTS_MAX];
+            char message[160] = "";
+            int n = backend_search_auto(&conf, ui.query, found, SEARCH_RESULTS_MAX, message, sizeof message);
+            ui_set_results(&ui, found, n > 0 ? n : 0, n > 0 ? "" : message);
+            printf("        search \"%s\": %d%s\n", ui.query, n > 0 ? n : 0,
+                   n < 0 ? " (nothing reachable)" : message);
+        } else if (a == UI_PLAY) {
+            /* what pressing A does past the UI: the resolve. No player here (that is the GPU and the panels). */
+            if (ui.view == VIEW_HISTORY && ui.history && ui.history_sel < ui.history->count) {
+                const HistoryItem *it = &ui.history->item[ui.history_sel];
+                StreamUrl st;
+                ResolveStatus rs = resolver_resolve(&conf, it->id, &st);
+                printf("        \"%s\" -> %s\n", it->title, resolve_status_text(rs));
+            } else if (ui.results.count) {
+                const SearchResult *r = &ui.results.item[ui.results.sel];
+                StreamUrl st;
+                ResolveStatus rs = resolver_resolve(&conf, r->id, &st);
+                printf("        \"%s\" -> %s (%dx%d %s)\n", r->title, resolve_status_text(rs),
+                       st.width, st.height, st.vcodec);
+                if (rs == RESOLVE_OK) ui_set_playing(&ui, r->title, r->channel);
+            }
+        } else if (a == UI_QUIT) {
+            printf("        quit\n");
+            break;
+        } else if (a == UI_THUMBS) {
+            printf("        (thumbnails would be fetched by the worker here)\n");
+        }
+
+        snprintf(path, sizeof path, "%s/%02d-%s.ppm", out ? out : "/tmp", step, key_name(k));
+        save_panels(path, &ui, fnt, pics, plus, SHOT_BOTH);
+        ui.dirty = false;
+    }
+    font_free(fnt);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     signal(SIGUSR1, on_usr1);
@@ -248,6 +479,11 @@ int main(int argc, char **argv)
     if (!conf_path || !*conf_path) conf_path = CONF_PATH_DEFAULT;
 
     log_line("starting: top=%s touch=%s", top_name, touch_hint ? touch_hint : "(auto)");
+
+    /* the modes that need no panels at all (docs/TESTING.md, "testing without the handheld") */
+    if (argc > 1 && strcmp(argv[1], "--search") == 0)  return argc > 2 ? cli_search(argc, argv) : 2;
+    if (argc > 1 && strcmp(argv[1], "--resolve") == 0) return cli_resolve(argc, argv);
+    if (argc > 1 && strcmp(argv[1], "--keys") == 0)    return argc > 2 ? cli_keys(argc, argv) : 2;
 
     if (argc > 1 && strcmp(argv[1], "--shot") == 0) {
         const char *out = argc > 2 ? argv[2] : "/tmp/bananatube.ppm";
@@ -295,7 +531,13 @@ int main(int argc, char **argv)
     }
 
     GbmEgl egl;
-    if (!gbm_egl_init(fd, &top, &egl)) { log_line("no EGL on the top panel"); drm_close(fd); return 1; }
+    /* EGL on the top panel is for the video. Without it -- a machine with no GPU, QEMU's virtio device, Mesa
+     * built for another SoC -- the client still browses: the top panel falls back to the same CPU path as the
+     * bottom one (which is where the search field and the results live anyway), and only the video is lost.
+     * Exiting here is what made the whole app untestable anywhere but the handheld. */
+    bool have_egl = gbm_egl_init(fd, &top, &egl);
+    if (!have_egl)
+        log_line("no EGL on the top panel: the video cannot be shown, everything else runs");
 
     /* Both panels are drawn by the CPU here: the top one carries the app's content (the results, or, once a
      * video plays, mpv's frames through EGL), the bottom one the controls. Two of the same thing, because the
@@ -319,19 +561,22 @@ int main(int argc, char **argv)
     log_memory("at startup");
 
     /* The player renders into the top panel's EGL context, which gbm_egl_init left current on this thread. */
-    PlayerGl pgl = {
-        .egl_display = egl.egl_display,
-        .egl_context = egl.egl_context,
-        .egl_surface = egl.egl_surface,
-        .get_proc_address = (void *(*)(const char *))eglGetProcAddress,
-        .width = top.w,
-        .height = top.h,
-    };
-    Player *player = player_create(conf.hwdec, 200);
-    if (player && !player_attach_render(player, &pgl)) {
-        log_line("no render context: the top screen will stay dark");
-        player_destroy(player);
-        player = NULL;
+    Player *player = NULL;
+    if (have_egl) {
+        PlayerGl pgl = {
+            .egl_display = egl.egl_display,
+            .egl_context = egl.egl_context,
+            .egl_surface = egl.egl_surface,
+            .get_proc_address = (void *(*)(const char *))eglGetProcAddress,
+            .width = top.w,
+            .height = top.h,
+        };
+        player = player_create(conf.hwdec, 200);
+        if (player && !player_attach_render(player, &pgl)) {
+            log_line("no render context: the top screen will stay dark");
+            player_destroy(player);
+            player = NULL;
+        }
     }
     if (!player) log_line("no player: the top screen will stay dark");
     Osd osd;
@@ -448,6 +693,14 @@ int main(int argc, char **argv)
                 break;
             case UI_PLAY: {
                 ui_set_status(&ui, "Resolving\xE2\x80\xA6");
+                /* Resolving is a blocking call on this thread, so the frames that say "Resolving..." are drawn
+                 * before it starts: otherwise the last picture stays on the panels for the second or two it
+                 * takes and the app looks frozen, which is how a slow resolve first read from the handheld. */
+                ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+                ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+                bottom_present(&top_ui, fd, &top, &dl_top, pics, THUMB_MAX_SLOTS, (float)top.w / SCREEN_W);
+                bottom_present(&bot_ui, fd, &bot, &dl_bot, pics, THUMB_MAX_SLOTS, (float)bot.w / SCREEN_W);
+                ui.dirty = false;
 #ifdef BANANATUBE_MPV
                 if (ui.view == VIEW_HISTORY) {
                     if (ui.history_sel >= 0 && ui.history_sel < history.count) {
@@ -672,6 +925,63 @@ int main(int argc, char **argv)
  * no EGL and no panels (plus: the RG DS Plus's 1024x768 at 1.6),
  * with a made-up set of results. It is how the layout is looked at on a machine that has none, and what a CI
  * run can diff. The pictures are flat colours: no network is involved. */
+
+/* The fonts the client uses, for a render with no panels. */
+static FontCtx *shot_fonts(void)
+{
+    FontCtx *fnt = font_init(first_font("BANANATUBE_FONTS", TTF_TITLE, "banana/fonts/Inter-Regular.ttf"),
+                             first_font("BANANATUBE_FONTS", TTF_BOLD, "banana/fonts/Inter-SemiBold.ttf"),
+                             first_font("BANANATUBE_FONTS", TTF_PIXEL, "rnds/fonts/PixelifySans-Medium.ttf"));
+    if (!fnt) log_line("shot: no fonts, the picture will have no text");
+    return fnt;
+}
+
+/* Renders whichever panel(s) were asked for into a PPM. Both of them stacked in one file is the way the two
+ * screens sit on the handheld, which is how the README's pictures are made. */
+static bool save_panels(const char *path, AppState *ui, FontCtx *fnt, BottomTex *pics, bool plus, ShotPanel panel)
+{
+    DrawList dl_top, dl_bot;
+    ui_draw_top(ui, &dl_top, pics, THUMB_MAX_SLOTS);
+    ui_draw_bot(ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+
+    bool want_top = (panel == SHOT_TOP || panel == SHOT_BOTH ||
+                     (panel == SHOT_VIEW && ui->view != VIEW_KEYBOARD && ui->view != VIEW_PLAYING));
+    bool want_bot = (panel == SHOT_BOTTOM || panel == SHOT_BOTH || !want_top);
+
+    if (getenv("BANANATUBE_DUMP")) {
+        const char *kind[] = { "rect", "text", "image" };
+        for (int i = 0; i < dl_top.n; i++) {
+            const DrawOp *op = &dl_top.op[i];
+            if (op->kind == OP_IMAGE || (op->kind == OP_TEXT && i < 30))
+                printf("top %3d %-5s box %4d,%4d %3dx%3d image %2d fit %d text \"%s\"\n",
+                       i, kind[op->kind], op->x, op->y, op->w, op->h, op->image, op->fit, op->text);
+        }
+    }
+
+    /* the panel to draw for: 640x480 on the RG DS, the Plus's 1024x768 at 1.6 with "plus" */
+    int w = SCREEN_W, h = SCREEN_H;
+    float scale = 1.0f;
+    if (plus) { w = 1024; h = 768; scale = 1.6f; }
+    int stack = (want_top && want_bot) ? 2 : 1;
+    uint32_t *canvas = calloc((size_t)w * h * stack, sizeof(uint32_t));
+    if (!canvas) return false;
+    if (want_top) render_full(canvas, w, h, fnt, &dl_top, pics, THUMB_MAX_SLOTS, scale);
+    if (want_bot) render_full(canvas + (size_t)w * h * (want_top ? 1 : 0), w, h, fnt, &dl_bot,
+                              pics, THUMB_MAX_SLOTS, scale);
+
+    FILE *f = fopen(path, "wb");
+    if (!f) { log_line("shot: cannot write %s", path); free(canvas); return false; }
+    fprintf(f, "P6\n%d %d\n255\n", w, h * stack);
+    for (int i = 0; i < w * h * stack; i++) {
+        uint8_t px[3] = { (uint8_t)(canvas[i] >> 16), (uint8_t)(canvas[i] >> 8), (uint8_t)canvas[i] };
+        fwrite(px, 1, 3, f);
+    }
+    fclose(f);
+    log_line("shot: %s (%d+%d draws)", path, dl_top.n, dl_bot.n);
+    free(canvas);
+    return true;
+}
+
 static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history,
                 ShotPanel panel)
 {
@@ -749,52 +1059,8 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
         results_scroll_into_view(&ui.results, ui.view_h);
     }
 
-    /* Both panels' lists are built, then whichever was asked for is rendered. The content is on the top panel
-     * (the search, the results, the video) and the controls on the bottom one (the keyboard, the transport). */
-    DrawList dl_top, dl_bot;
-    ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
-    ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
-
-    bool want_top = (panel == SHOT_TOP || panel == SHOT_BOTH ||
-                     (panel == SHOT_VIEW && ui.view != VIEW_KEYBOARD && ui.view != VIEW_PLAYING));
-    bool want_bot = (panel == SHOT_BOTTOM || panel == SHOT_BOTH || !want_top);
-
-    if (getenv("BANANATUBE_DUMP")) {
-        const char *kind[] = { "rect", "text", "image" };
-        for (int i = 0; i < dl_top.n; i++) {
-            const DrawOp *op = &dl_top.op[i];
-            if (op->kind == OP_IMAGE || (op->kind == OP_TEXT && i < 30))
-                printf("top %3d %-5s box %4d,%4d %3dx%3d image %2d fit %d text \"%s\"\n",
-                       i, kind[op->kind], op->x, op->y, op->w, op->h, op->image, op->fit, op->text);
-        }
-    }
-
-    FontCtx *fnt = font_init(first_font("BANANATUBE_FONTS", TTF_TITLE, "banana/fonts/Inter-Regular.ttf"),
-                             first_font("BANANATUBE_FONTS", TTF_BOLD, "banana/fonts/Inter-SemiBold.ttf"),
-                             first_font("BANANATUBE_FONTS", TTF_PIXEL, "rnds/fonts/PixelifySans-Medium.ttf"));
-    if (!fnt) log_line("shot: no fonts, the picture will have no text");
-
-    /* the panel to draw for: 640x480 on the RG DS, the Plus's 1024x768 at 1.6 with "plus" */
-    int w = SCREEN_W, h = SCREEN_H;
-    float scale = 1.0f;
-    if (plus) { w = 1024; h = 768; scale = 1.6f; }
-    int stack = (want_top && want_bot) ? 2 : 1;           /* both: stacked the way the two screens sit */
-    uint32_t *canvas = calloc((size_t)w * h * stack, sizeof(uint32_t));
-    if (!canvas) { font_free(fnt); return 1; }
-    if (want_top) render_full(canvas, w, h, fnt, &dl_top, pics, THUMB_MAX_SLOTS, scale);
-    if (want_bot) render_full(canvas + (size_t)w * h * (want_top ? 1 : 0), w, h, fnt, &dl_bot,
-                              pics, THUMB_MAX_SLOTS, scale);
-
-    FILE *f = fopen(path, "wb");
-    if (!f) { log_line("shot: cannot write %s", path); free(canvas); font_free(fnt); return 1; }
-    fprintf(f, "P6\n%d %d\n255\n", w, h * stack);
-    for (int i = 0; i < w * h * stack; i++) {
-        uint8_t px[3] = { (uint8_t)(canvas[i] >> 16), (uint8_t)(canvas[i] >> 8), (uint8_t)canvas[i] };
-        fwrite(px, 1, 3, f);
-    }
-    fclose(f);
-    log_line("shot: %s (%d+%d draws)", path, dl_top.n, dl_bot.n);
-    free(canvas);
+    FontCtx *fnt = shot_fonts();
+    bool ok = save_panels(path, &ui, fnt, pics, plus, panel);
     font_free(fnt);
-    return 0;
+    return ok ? 0 : 1;
 }

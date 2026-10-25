@@ -146,6 +146,46 @@ Send me:
 - which of the two panels, and which panel size, if it is a drawing problem — the RG DS and the Plus scale
   differently, and that is where scaling bugs hide
 
+## Testing without the handheld
+
+Most bugs never needed the card. The client has three modes that run the *real* code with no DRM, no EGL, no
+decoder and no input devices — the same `AppState`, the same `ui_key`, the same draw lists, the same backends
+over the real network — and write pictures you can look at. What they cannot test is the panels, the GPU and
+the video unit.
+
+```sh
+# a real search: a table of results, and both panels drawn as the handheld would have them
+bananatube --search "banana theme" --out /tmp/bt --frames
+
+# one video's stream URL, resolved exactly as pressing A does — the half of playing that has no UI
+bananatube --resolve GbOFoVTa93E
+
+# drive the UI with a script of key names, one frame per step
+bananatube --keys "select,down,A,start,right,A" --query "banana theme" --out /tmp/bt
+```
+
+`--keys` prints what each key did, what the view, the selection and the history became, and — for the keys that
+need the network — what the search returned and what pressing A resolved to:
+
+```
+   3. right    -> thumbs    view results, 20 results, sel 2, history 0
+   4. A        -> play      view results, 20 results, sel 2, history 0
+        "Foreboding Fantasy - Top Banana Chase Theme" -> ready (640x360 avc1.4D401E)
+```
+
+Key names are the ones the log prints: `up down left right A B X Y L1 R1 L2 R2 start select home`.
+
+Both `--search --frames` and `--keys` write PPMs — `--show` them, or `magick x.ppm x.png`. A frame is both
+panels stacked, the way the two screens sit. Add `--plus` for the RG DS Plus's 1024x768.
+
+Two things are worth knowing about it:
+
+- **It cannot show the video.** The top panel is drawn by libmpv through EGL, and there is no GPU in these
+  modes; `--resolve` is what tells you the stream side is right.
+- **The real client runs without EGL now.** If `gbm_egl_init()` fails — QEMU's virtio device, a machine whose
+  Mesa is built for another SoC — the app logs it, browses normally on the CPU, and only the video is lost. It
+  used to exit, which is what made it untestable anywhere but the handheld.
+
 ## What the first run on the hardware found
 
 Recorded because none of it is visible from a desktop, and each one cost a build:
@@ -179,7 +219,13 @@ Recorded because none of it is visible from a desktop, and each one cost a build
 7. **Only the first Invidious instance was ever tried**, and the list was mostly dead (checked against the live
    API: one answers, one rate-limits, one is behind a wall, one is down). All of them are tried in order now,
    with the working one first and the others as fallbacks.
-8. **The layout.** The results were on the bottom panel, which read as the app being on the wrong screen — the
+8. **YouTube bot-checks the player endpoint.** A search resolved (the `compactVideoRenderer` fix below), the
+   video did not: `innertube: Sign in to confirm you're not a bot`, then the yt-dlp last resort (which is not in
+   the image), then "Could not play this video". Measured against the live API, **1 of 8** videos resolved.
+   Every InnerTube reply carries a `visitorData`, the refusal carries a usable one, and sending it back is the
+   whole difference: **8 of 8** resolved with it. `player_request()` in `net/innertube.c` keeps it, sends it,
+   and asks once more with the value from a refusal. `--resolve` is how it was found and how it is checked.
+9. **The layout.** The results were on the bottom panel, which read as the app being on the wrong screen — the
    content goes on the top panel now and the controls on the bottom one, which is also where the touchscreen is.
    The transport row had been drawn but was never actually tappable (`ui_transport_hit` was only used by its own
    test), and the keyboard was bottom-aligned inside the whole screen whatever box it was given, which left most

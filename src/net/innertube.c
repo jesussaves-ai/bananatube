@@ -23,6 +23,32 @@
  * without a rebuild, which is what to use when YouTube rotates it. */
 #define INNERTUBE_KEY_DEFAULT "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
 
+/* YouTube bot-checks a player request that arrives with no visitor. That check is what almost every video used
+ * to answer with ("Sign in to confirm you're not a bot"): of eight videos from a real search, one resolved.
+ *
+ * Every InnerTube reply carries a visitorData in its responseContext, and sending it back is the whole
+ * difference -- measured against the live API, the same eight videos all resolve with plain stream URLs. The
+ * one from the last reply is kept and sent from then on; and a player call that still gets the bot check is
+ * retried once with the visitorData from that very reply, which works on its own, so a video opened from the
+ * watched list (no search before it) is fine too.
+ *
+ * A search reply is the tidiest source and the usual one: the app searches, then plays. */
+static char g_visitor[768];
+
+static void remember_visitor(const cJSON *root)
+{
+    const cJSON *rc = cJSON_GetObjectItemCaseSensitive(root, "responseContext");
+    char v[768] = "";
+    if (!rc) return;
+    json_str(rc, "visitorData", v, sizeof v);
+    if (v[0] && strcmp(v, g_visitor) != 0) {
+        str_copy(g_visitor, sizeof g_visitor, v);
+        log_line("innertube: visitorData kept (%u chars)", (unsigned)strlen(g_visitor));
+    }
+}
+
+static char *player_request(const Conf *c, const char *id);   /* defined below: both detail and streams use it */
+
 static const char *innertube_key(void)
 {
     const char *k = getenv("BANANATUBE_KEY");
@@ -42,8 +68,9 @@ static void client_context(char *out, size_t cap)
         "\"osVersion\":\"12\","
         "\"androidSdkVersion\":32,"
         "\"hl\":\"en\",\"gl\":\"US\","
+        "\"visitorData\":\"%s\","
         "\"userAgent\":\"com.google.android.apps.youtube.vr.oculus/1.64.0 (Linux; U; Android 12; GB) gzip\""
-        "}}");
+        "}}", g_visitor);
 }
 
 /* A YouTube text field: a plain string (videoDetails.title), {simpleText}, or {runs:[{text}]} -- the
@@ -139,7 +166,7 @@ static void walk_video_renderers(const cJSON *node, SearchResult *out, int max, 
 
 static int innertube_search(const Conf *c, const char *query, SearchResult *out, int max)
 {
-    char ctx[640], body[1280], esc[512];
+    char ctx[1200], body[2400], esc[512];
     client_context(ctx, sizeof ctx);
     url_encode(query, esc, sizeof esc);
     snprintf(body, sizeof body, "{%s,\"query\":\"%s\",\"params\":\"EgIQAQ%%3D%%3D\"}", ctx, esc);
@@ -152,6 +179,10 @@ static int innertube_search(const Conf *c, const char *query, SearchResult *out,
         log_line("innertube: %s", http_error(&r));
         http_response_free(&r);
         return -1;                     /* not reachable, which is not the same as nothing found */
+    }
+    {   /* the search reply is where the visitorData usually comes from: keep it for the player calls */
+        cJSON *sroot = r.data ? json_parse(r.data, r.len, "innertube search (visitor)") : NULL;
+        if (sroot) { remember_visitor(sroot); cJSON_Delete(sroot); }
     }
     int n = innertube_parse_search(r.data ? r.data : "", out, max);
     if (n == 0)
@@ -176,18 +207,10 @@ int innertube_parse_search(const char *json, SearchResult *out, int max)
 
 static int innertube_detail(const Conf *c, const char *id, VideoDetail *out)
 {
-    char ctx[640], body[1024];
-    client_context(ctx, sizeof ctx);
-    snprintf(body, sizeof body,
-        "{%s,\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}", ctx, id);
-
-    char url[256];
-    snprintf(url, sizeof url, "%s&key=%s", INNERTUBE_PLAYER, innertube_key());
-
-    HttpResponse r;
-    if (!http_post_json(url, body, c->search_timeout_ms, &r)) { http_response_free(&r); return -1; }
-    int ok = innertube_parse_video(r.data ? r.data : "", id, out);
-    http_response_free(&r);
+    char *text = player_request(c, id);
+    if (!text) return -1;
+    int ok = innertube_parse_video(text, id, out);
+    free(text);
     return ok;
 }
 
@@ -261,21 +284,54 @@ static Format format_from_innertube(const cJSON *o)
     return f;
 }
 
-static ResolveStatus innertube_streams(const Conf *c, const char *id, Format *out, int max)
+/* One player request, with the visitorData. YouTube bot-checks a request that arrives without one -- that is
+ * the "Sign in to confirm you're not a bot" most videos answered with -- and the refusal itself carries a usable
+ * visitorData, so asking again with it goes through. Measured against the live API: without it 1 of 8 videos
+ * from a real search resolved; with it, 8 of 8. Both a video's details and its streams come from this endpoint,
+ * so both come through here.
+ *
+ * Returns the reply text (the caller frees it) or NULL when it could not be asked at all. */
+static char *player_request(const Conf *c, const char *id)
 {
-    char ctx[640], body[1024];
-    client_context(ctx, sizeof ctx);
-    snprintf(body, sizeof body,
-        "{%s,\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}", ctx, id);
-
-    char url[256];
+    char ctx[1200], body[2400], url[256];
     snprintf(url, sizeof url, "%s&key=%s", INNERTUBE_PLAYER, innertube_key());
 
-    HttpResponse r;
-    if (!http_post_json(url, body, c->search_timeout_ms, &r)) { http_response_free(&r); return RESOLVE_NO_NETWORK; }
-    ResolveStatus st;
-    innertube_parse_formats(r.data ? r.data : "", out, max, &st);
-    http_response_free(&r);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        client_context(ctx, sizeof ctx);
+        snprintf(body, sizeof body,
+            "{%s,\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}", ctx, id);
+
+        HttpResponse r;
+        if (!http_post_json(url, body, c->search_timeout_ms, &r)) { http_response_free(&r); return NULL; }
+
+        cJSON *root = json_parse(r.data ? r.data : "", r.len, "innertube player");
+        if (!root) { http_response_free(&r); return NULL; }
+
+        remember_visitor(root);
+        const cJSON *ps = cJSON_GetObjectItemCaseSensitive(root, "playabilityStatus");
+        const cJSON *stt = ps ? cJSON_GetObjectItemCaseSensitive(ps, "status") : NULL;
+        bool bot = cJSON_IsString(stt) && strcmp(stt->valuestring, "LOGIN_REQUIRED") == 0;
+        cJSON_Delete(root);
+
+        if (!bot || attempt == 1) {
+            char *text = malloc(r.len + 1);
+            if (text) { memcpy(text, r.data ? r.data : "", r.len); text[r.len] = '\0'; }
+            http_response_free(&r);
+            return text;
+        }
+        http_response_free(&r);
+        log_line("innertube: the bot check fired; asking again with this reply's visitorData");
+    }
+    return NULL;
+}
+
+static ResolveStatus innertube_streams(const Conf *c, const char *id, Format *out, int max)
+{
+    char *text = player_request(c, id);
+    if (!text) return RESOLVE_NO_NETWORK;
+    ResolveStatus st = RESOLVE_ALL_FAILED;
+    innertube_parse_formats(text, out, max, &st);
+    free(text);
     return st;
 }
 

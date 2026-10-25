@@ -36,6 +36,7 @@ add_library(bananatube_core STATIC
     src/font.c
     src/input/keys.c
     src/input/keyboard.c
+    src/net/backend.c
     src/net/http.c
     src/net/invidious.c
     src/net/innertube.c

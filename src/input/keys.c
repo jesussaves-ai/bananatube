@@ -1,6 +1,8 @@
 /* keys.c */
 #include "input/keys.h"
 
+#include <strings.h>
+
 #include <linux/input-event-codes.h>
 
 BananaKey key_from_code(uint16_t code)
@@ -33,6 +35,17 @@ BananaKey key_from_code(uint16_t code)
     case KEY_VOLUMEDOWN: return BK_VOLUME_DOWN;
     default:             return BK_NONE;
     }
+}
+
+BananaKey banana_key_from_name(const char *name)
+{
+    if (!name || !*name) return BK_NONE;
+    for (int k = BK_UP; k <= BK_VOLUME_DOWN; k++) {
+        const char *n = key_name((BananaKey)k);
+        if (strcasecmp(n, name) == 0) return (BananaKey)k;
+        /* the log writes A/B/X/Y and the names are the letters; accept either case, which strcasecmp does */
+    }
+    return BK_NONE;
 }
 
 const char *key_name(BananaKey k)

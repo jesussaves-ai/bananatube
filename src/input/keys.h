@@ -23,6 +23,9 @@ BananaKey key_from_code(uint16_t code);
 
 /* A short name for logs ("A", "D-pad up", "L2"). */
 const char *key_name(BananaKey k);
+/* The other direction, for a script that names its keys the way the log does ("down", "A", "select"). Returns
+ * BK_NONE for a name that is not one. */
+BananaKey   banana_key_from_name(const char *name);
 
 /* A hint chip's letter for the button hints row: "A", "B", "L", "R", "START", "SELECT". */
 const char *key_hint_label(BananaKey k);

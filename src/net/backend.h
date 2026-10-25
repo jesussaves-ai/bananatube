@@ -13,6 +13,7 @@
 #include "conf.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 /* how many results a search keeps: as many as a 640x480 grid can scroll through before it stops helping */
 #define SEARCH_RESULTS_MAX 40
@@ -88,6 +89,12 @@ typedef struct {
 
 extern const Backend backend_invidious;
 extern const Backend backend_innertube;
+
+/* Runs a search the way the app does -- conf.backend's choice, or "auto" as Invidious then InnerTube. Returns
+ * the number of results, -1 when nothing could be reached (which is not the same as 0: it answered and there
+ * was nothing). `message` (optional) gets what to show the user. */
+int backend_search_auto(const Conf *c, const char *query, SearchResult *out, int max,
+                        char *message, size_t message_cap);
 
 /* ---- the format rules, shared by both backends and tested on their own ---------------------------------
  * The RK3568's video unit decodes H.264 and VP9; AV1 is software-only and would peg all four A55s at 480p,
