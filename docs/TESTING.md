@@ -20,10 +20,15 @@ a tile for it:
 
 1. The Buildroot package (`buildroot/package/bananatube/`) installs the binary, `run-bananatube` and the app
    folder.
-2. Add the entry from `system/systems.conf.snippet` to `/etc/banana/systems.conf` (or `banana/systems.conf` on
-   the card), then restart the menu. That is the only change outside the package.
+2. Add the entry from `system/systems.conf.snippet` to `/etc/banana/systems.conf`, then restart the menu.
+   **If the card has `/data/banana/systems.conf`, the menu reads that instead** (`banana-ui-session` sets
+   `BANANA_SYSTEMS` to it) — put the section in the card's file in that case.
+3. Add the line from `system/systems.cfg.snippet` to the theme's `rnds/systems.cfg` (the theme in the image is
+   `/usr/share/banana/rnds/systems.cfg`). This is what gives YouTube a tile of its own, where **A starts it**;
+   without it the tile falls back to the `*` icon and opens as a folder holding one game.
 
-Then **YouTube** appears on the shelf; opening it hands the panels over.
+Then **YouTube** appears on the shelf and A hands the panels over. If a theme of your own is selected, its
+`systems.cfg` needs the same line — the `[app]` marker lives in the theme, not in the menu's list.
 
 ## 1. It starts, and comes back
 

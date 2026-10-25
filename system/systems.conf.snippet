@@ -1,5 +1,8 @@
-# BananaTube in the menu: add this to /etc/banana/systems.conf (or /data/banana/systems.conf on the card), then
-# restart the menu. The package installs the app folder and the launcher; this is the only change outside it.
+# BananaTube in the menu: add this to /etc/banana/systems.conf, then restart the menu. The package installs the
+# app folder and the launcher; this and the theme line in systems.cfg.snippet are the only changes outside it.
+#
+# Careful: if the card has /data/banana/systems.conf, the menu reads that *instead* of /etc/banana/systems.conf
+# (banana-ui-session exports BANANA_SYSTEMS), so the section has to go in the card's file in that case.
 #
 #   name    the tile's name
 #   folder  the app folder the package installed

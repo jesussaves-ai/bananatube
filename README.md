@@ -45,9 +45,11 @@ into a buffer with no DRM, no GPU and no network.*
 ## Getting it on the handheld
 
 The Buildroot package (`buildroot/package/bananatube/`) builds the binary, installs the launcher and puts the
-app folder on the shelf. **One change lives outside the package**: the menu needs a systems list entry to show
-it, and `system/systems.conf.snippet` is exactly those seven lines to add to `/etc/banana/systems.conf` (or
-`/data/banana/systems.conf` on the card). Nothing else in BananaOS has to change.
+app folder on the shelf. **Two lines live outside the package**, both written out as snippets: the menu needs a
+systems list entry to show the tile (`system/systems.conf.snippet`, into `/etc/banana/systems.conf` — or the
+card's `/data/banana/systems.conf`, which the menu prefers when it is there), and the theme needs the `[app]`
+marker to make that tile an app, so A starts it rather than opening a folder of one game
+(`system/systems.cfg.snippet`). Nothing else in BananaOS has to change.
 
 The client is started the way a game is: the menu lets go of the panels and runs `run-bananatube`, which takes
 the DRM master, plays, and gives it back when it exits — bananad's handover, the same one BananaDS uses.

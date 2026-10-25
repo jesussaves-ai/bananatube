@@ -1,0 +1,19 @@
+# BananaTube on the shelf, part two: the theme.
+#
+# The menu's systems list (systems.conf, the other snippet) is what makes the tile exist. The theme's
+# systems.cfg is what makes it *an app*: a system with [app] gets a tile of its own on the shelf and A starts it
+# straight away. Without the line, the id matches nothing, so the theme's "*" fallback gives it a gamepad icon
+# and the tile opens as a folder of one game you have to press A on a second time.
+#
+# Add the line below to the theme's rnds/systems.cfg -- /usr/share/banana/rnds/systems.cfg for the theme that
+# comes with the image, or the selected theme's own file -- next to dodakvarter and rocknixdsbank, which are
+# apps in the same way.
+#
+#   <ids>  <icon>  <#accent>  <maker> [[app]]
+#
+#     ids      the [section] name in systems.conf (comma-separated names share a line)
+#     icon     a file in rnds/icons -- video.png is the drawn video icon
+#     accent   the tile's colour (the top screen's sheet, the achievement bar)
+#     maker    what to show when the systems list gives none
+#     [app]    this marker is what makes it one app with a tile of its own
+bananatube                                              video.png       #e0402f   Banana [app]
