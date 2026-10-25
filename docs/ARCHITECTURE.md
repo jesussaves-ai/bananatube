@@ -1,0 +1,175 @@
+# Architecture
+
+Why BananaTube is built the way it is, and what each part is allowed to cost. For the original proposal this was
+developed from, see the plan alongside it; this file is the design as it stands.
+
+## 1. Where it sits in BananaOS
+
+`banana-tube` is a standalone binary that bananad starts the way it starts a game:
+
+1. banana-ui writes the game's pid to `/run/banana/game.pid`, closes the DRM device, the input devices and the
+   sound device, and exits.
+2. bananad `fork`s and `exec`s `/usr/libexec/banana/run-bananatube`, and waits (`system/bananad/bananad.c`'s
+   `run()` — the same pattern as `run-bananads`).
+3. banana-tube opens `/dev/dri/card0` and takes the DRM master, which was left free.
+4. On exit it closes the device and drops the master; bananad's `waitpid` returns and it brings the menu back.
+
+The contract with the launcher is the one BananaDS gets, so `docs/EMULATORS.md`'s names are reused:
+`BANANA_TOP` (the top panel's connector, `DSI-2` on both handhelds) and `BANANA_TOUCH` (part of the bottom
+touchscreen's sysfs path, used to tell two touch-capable devices apart).
+
+Sleep is bananad's, unchanged: it `SIGSTOP`s the process group before the clocks drop and `SIGCONT`s it on wake,
+and banana-tube redraws on `SIGUSR1`. Lid-close audio-only (Phase 4) is a flag the app keeps for itself: on
+`SW_LID` it drops the video track and keeps the sound, and restores the picture when the lid opens.
+
+## 2. Display
+
+BananaOS has no compositor, no Wayland and no windowing library. banana-ui opens both DRM/KMS connectors itself
+(`ui/src/kms.cpp`), and BananaDS drives the panels through `libdrm` with Panfrost for the GPU. BananaTube takes
+the same path, with one panel per technique:
+
+| | Top panel | Bottom panel |
+|---|---|---|
+| Drawn by | the GPU, through `libmpv` (Phase 3) | the CPU |
+| Surface | `GBM` surface + `EGL` context (`display/gbm_egl.c`) | DRM dumb buffers (`display/bottom.c`) |
+| Why | the VPU decodes into DMABUFs the GPU imports; a CPU copy of 720p60 would not fit the budget | a search field, a keyboard and a grid of thumbnails need no GPU, and the CPU path is what the menu already proves is fast |
+
+The bottom panel is the arrangement banana-ui uses, which is what keeps an idle frame cheap:
+
+- the frame is a **flat list of draws** (`display/draw.h`) — rectangles, text, pictures, each with the clip in
+  force when it was pushed;
+- the next frame is **diffed against the last one** (`dl_diff`): a draw that came, went, moved or changed
+  contributes its old and new boxes to a small damage list, and the two lists are walked with a bounded
+  look-ahead so an insertion does not repaint everything after it;
+- only the damaged rectangles are repainted (every draw that touches them, clipped to them), composed in
+  **cached memory**;
+- only those rectangles are `memcpy`d into the **uncached scanout buffer**, and the page flips on vblank.
+
+At most eight separate rectangles are tracked; past that the list collapses to one bounding rectangle, because a
+1.2 MB repaint costs less than the bookkeeping.
+
+**The panel sizes.** A theme is 640x480 units whatever the panel is: the RG DS Plus's 1024x768 sheets are that
+grid scaled by 1.6, and the software renderer scales its geometry and its text the same way. The mode is not
+hard-coded: `drm_find_panels()` reads it from the connector (the kernel command line's `video=DSI-2:...` first,
+then the panel's preferred mode), so `banana-panel-tune`'s rewritten device tree is what is used.
+
+## 3. Input
+
+Read straight from `/dev/input/event*` with `poll()` — `evdev` lets several readers share a device, which is how
+bananad, banana-ui and this all see the buttons at once.
+
+The codes are the RG DS's (`buildroot/board/rgds/dts/rk3568-anbernic-rg-ds.dts`), and the mapping is banana-ui's
+(`ui/src/input.cpp`) so a button means what a BananaOS user expects:
+
+| Button | Code | | Button | Code |
+|---|---|---|---|---|
+| D-pad | `BTN_DPAD_UP/DOWN/LEFT/RIGHT` | | A | `BTN_EAST` |
+| B | `BTN_SOUTH` | | X | `BTN_NORTH` |
+| Y | `BTN_WEST` | | L1/R1 | `BTN_TL`/`BTN_TR` |
+| L2/R2 | `BTN_TL2`/`BTN_TR2` | | START/SELECT | `BTN_START`/`BTN_SELECT` |
+| HOME | `BTN_MODE` | | Lid | `SW_LID` |
+
+A is `BTN_EAST` and B is `BTN_SOUTH` — the Nintendo layout, and the one thing that differs from a PC pad. A USB
+pad's hat (`ABS_HAT0X/Y`) is reported as a D-pad press. L2/R2 are their own keys here, where banana-ui folds them
+into L/R: the player seeks with them.
+
+The touchscreen is found by capability (multitouch, or a single-touch with `BTN_TOUCH`, or an absolute pointer),
+and `BANANA_TOUCH` picks the bottom one when two devices qualify. Its axis ranges come from `EVIOCGABS` and are
+mapped to screen units once, so a tap is in the same coordinates as the draws.
+
+## 4. The backends
+
+Two sources behind one interface (`net/backend.h`), chosen by `bananatube.conf` (`backend = auto` tries them in
+order):
+
+**Tier 1 — search, metadata, thumbnails: one HTTP request, no process.**
+
+- **Invidious/Piped** (`net/invidious.c`): `GET /api/v1/search?q=…&type=video` and `GET /api/v1/videos/<id>`. One
+  GET, plain URLs, no cipher, no session. A public instance that is blocked or rate-limited is the risk, which is
+  what the order is for.
+- **InnerTube** (`net/innertube.c`): `POST /youtubei/v1/search` with the Android VR client's context. YouTube
+  moves its renderers between builds, so the reply is *walked* for every `videoRenderer` rather than addressed by
+  path.
+
+Neither spawns anything. A search is ~1.5 MB of peak allocation and 200–400 ms on the handheld's Wi-Fi.
+
+**Tier 2 — a stream URL, once, when a video is picked.**
+
+1. The configured instance's `adaptiveFormats`/`formatStreams` (or Piped's `videoStreams`/`audioStreams`), or
+2. InnerTube's `streamingData`, or
+3. **a single `yt-dlp -g` run** — only here, only once per video, with its output captured and the process gone
+   (and its ~70 MB freed) before libmpv is asked to open the stream.
+
+A reply whose only URLs come back as a `signatureCipher` is reported as `RESOLVE_NEEDS_CIPHER` rather than solved:
+shipping a JavaScript interpreter and chasing YouTube's weekly `n`-param rotation is not worth it on this device.
+
+Authentication, when it is added, is a `cookies.txt` in `banana/` handed to curl for the requests that need it —
+never parsed into memory and never logged.
+
+### The format rules (`select_video_format`)
+
+The RK3568's video unit decodes H.264, H.265, VP8 and VP9. **It has no AV1 decoder**, and software AV1 at 480p
+uses every A55 core, so `av01` is refused outright — even when it is the only format at or under the cap, in which
+case the answer is "no suitable format" rather than a video that stutters.
+
+In order of preference:
+
+1. H.264 (`avc1`/`avc3`) — the VPU's cheapest path and the widest support;
+2. VP9 (`vp09`/`vp9`), then H.265, then VP8, then an absent codec string (ranked last, allowed);
+3. within a codec: the **largest height at or under the cap**, then the lowest bitrate;
+4. never above `conf.quality` (480p by default — the panel's own height) and never above 60 fps;
+5. audio is the highest-bitrate audio-only stream, so a DASH video and its audio are two URLs libmpv plays
+   together; a muxed `formats`/`formatStreams` entry needs no second stream.
+
+## 5. Playback (Phase 3)
+
+libmpv renders into the EGL surface `display/gbm_egl.c` already creates, through `mpv_render_context` — the same
+surface Phase 1 paints a cycling colour into. The options that matter on a 1 GB device:
+
+```
+hwdec=v4l2m2m-copy            # the kernel's stateless decoder (no Rockchip userspace); rkmpp-copy if it drops frames
+vd-lavc-dr=yes                # decoded frames go straight to the GPU: no CPU copy of every frame
+demuxer-max-bytes=16MiB       # mpv's default is 150 MB, which is instant OOM here
+demuxer-max-back-bytes=4MiB   # the rewind buffer
+cache=no                      # stream it, do not cache to disk
+ytdl=no                       # mpv must never spawn its own yt-dlp: we resolved the URL ourselves
+video-sync=display-resample   # the panels are 60 Hz
+video-output-levels=limited   # a full-range picture on a limited-range panel looks washed out
+```
+
+The OSD (a buffering spinner, the resolution badge, a timestamp while scrubbing) is drawn into the same surface
+as a few textured quads rather than a second plane, and only when it changes.
+
+## 6. Memory
+
+| | |
+|---|---|
+| libmpv + ffmpeg (no cache) | 35–45 MB |
+| Decoded frames (hardware DMABUFs) | 8–12 MB |
+| EGL/GBM surfaces, top panel (2x 1024x768) | 6–8 MB |
+| Bottom panel dumb buffers (2x 640x480) | 3 MB |
+| Thumbnails, 12 slots at 320x180 RGB565 | 1.4 MB |
+| Draw lists, glyph cache, curl buffers | 3–4 MB |
+| **Peak during 720p playback** | **~75–90 MB** |
+| **Idle, browsing** | **~30–35 MB** |
+
+The 1 GB machine runs the kernel and the caches in ~95 MB, and bananad reaped banana-ui before starting this, so
+there is no overlap with the menu's 23.5 MB. The `yt-dlp` fallback adds ~70 MB for the one second it runs, while
+the process is still at ~30 MB, and is gone before libmpv allocates.
+
+The thumbnail cache is a fixed number of slots (`cache_size`, 12 by default) with an LRU: a grid keeps about a
+screenful resident, and the least recently drawn slot is the one reused. Pictures are decoded by libjpeg with
+`scale_denom` set to 1/2, 1/4 or 1/8, so the scaling happens during the decode instead of on the CPU afterwards.
+
+## 7. Phases
+
+| | |
+|---|---|
+| **1. Both panels** | DRM, GBM/EGL, dumb buffers, the damage-diffing renderer, evdev, FreeType, the handover. **Done** — see the README's status table. |
+| **2. Search on the bottom screen** | The search field, the virtual keyboard, the results grid, the async thumbnail fetcher and its GLES upload. |
+| **3. Video on the top screen** | `net/resolver.c` is written; what remains is `mpv_render_context` on the existing EGL surface, and measuring `v4l2-request` against `rkmpp` at 480p60 and 720p60. |
+| **4. Transport and persistence** | Scrubbing, the quality switch, history (SQLite, which BananaOS already carries) and lid-close audio-only. |
+
+Phase 1 was first because it is the risky one: it touches the same display path banana-ui and BananaDS use, and it
+has to coexist with bananad's handover. With both panels lighting up from one process, everything after it is an
+addition to a working skeleton.

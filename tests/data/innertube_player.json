@@ -1,0 +1,22 @@
+{
+  "playabilityStatus": { "status": "OK" },
+  "videoDetails": {
+    "videoId": "vidOne00001", "title": "First result", "author": "Channel One",
+    "lengthSeconds": "754", "viewCount": "1234567",
+    "shortDescription": "A walk through the theme editor." },
+  "streamingData": {
+    "expiresInSeconds": "21540",
+    "adaptiveFormats": [
+      { "itag": 137, "mimeType": "video/mp4; codecs=\"avc1.640028\"", "width": 1920, "height": 1080,
+        "fps": 30, "bitrate": 3000000, "url": "https://x/1080.mp4" },
+      { "itag": 136, "mimeType": "video/mp4; codecs=\"avc1.4d401f\"", "width": 1280, "height": 720,
+        "fps": 30, "bitrate": 1500000, "url": "https://x/720.mp4" },
+      { "itag": 247, "mimeType": "video/webm; codecs=\"vp9\"", "width": 1280, "height": 720,
+        "fps": 30, "bitrate": 1400000, "url": "https://x/720.webm" },
+      { "itag": 140, "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"", "bitrate": 128000,
+        "url": "https://x/audio.m4a" },
+      { "itag": 399, "mimeType": "video/mp4; codecs=\"av01.0.05M.08\"", "width": 640, "height": 480,
+        "fps": 30, "bitrate": 400000, "signatureCipher": "s=abc&url=https%3A%2F%2Fx" }
+    ]
+  }
+}

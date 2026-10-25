@@ -1,0 +1,29 @@
+{
+  "responseContext": { "visitorData": "Cgt2aXNpdG9y" },
+  "contents": {
+    "twoColumnSearchResultsRenderer": {
+      "primaryContents": {
+        "sectionListRenderer": {
+          "contents": [
+            { "itemSectionRenderer": { "contents": [
+              { "videoRenderer": {
+                  "videoId": "vidOne00001",
+                  "title": { "runs": [ { "text": "First " }, { "text": "result" } ] },
+                  "ownerText": { "runs": [ { "text": "Channel One" } ] },
+                  "lengthText": { "simpleText": "12:34" },
+                  "viewCountText": { "simpleText": "1,234 views" },
+                  "isLiveNow": false } } ] } },
+            { "itemSectionRenderer": { "contents": [
+              { "videoRenderer": {
+                  "videoId": "vidTwo00002",
+                  "title": { "simpleText": "Second result" },
+                  "ownerText": { "runs": [ { "text": "Channel Two" } ] },
+                  "lengthText": { "simpleText": "1:02:03" },
+                  "viewCountText": { "simpleText": "987,654 views" },
+                  "isLiveNow": true } } ] } }
+          ]
+        }
+      }
+    }
+  }
+}

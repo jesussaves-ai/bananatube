@@ -1,0 +1,29 @@
+{
+  "title": "Making a theme for BananaOS", "author": "Banana Dev", "lengthSeconds": 754,
+  "viewCount": 1234567, "likeCount": 4321, "publishedText": "3 days ago",
+  "description": "A walk through the theme editor.",
+  "adaptiveFormats": [
+    { "itag": "399", "url": "https://x/av1-480.mp4", "type": "video/mp4; codecs=\"av01.0.05M.08\"",
+      "qualityLabel": "480p", "width": 640, "height": 480, "fps": 30, "bitrate": 400000 },
+    { "itag": "398", "url": "https://x/av1-720.mp4", "type": "video/mp4; codecs=\"av01.0.08M.08\"",
+      "qualityLabel": "720p", "width": 1280, "height": 720, "fps": 30, "bitrate": 900000 },
+    { "itag": "135", "url": "https://x/avc1-480.mp4", "type": "video/mp4; codecs=\"avc1.4d401f\"",
+      "qualityLabel": "480p", "width": 640, "height": 480, "fps": 30, "bitrate": 600000 },
+    { "itag": "136", "url": "https://x/avc1-720.mp4", "type": "video/mp4; codecs=\"avc1.4d401f\"",
+      "qualityLabel": "720p", "width": 1280, "height": 720, "fps": 60, "bitrate": 1500000 },
+    { "itag": "137", "url": "https://x/avc1-1080.mp4", "type": "video/mp4; codecs=\"avc1.640028\"",
+      "qualityLabel": "1080p", "width": 1920, "height": 1080, "fps": 30, "bitrate": 3000000 },
+    { "itag": "248", "url": "https://x/vp9-480.webm", "type": "video/webm; codecs=\"vp9\"",
+      "qualityLabel": "480p", "width": 640, "height": 480, "fps": 30, "bitrate": 500000 },
+    { "itag": "140", "url": "https://x/audio-128.m4a", "type": "audio/mp4; codecs=\"mp4a.40.2\"",
+      "bitrate": 128000, "audioQuality": "AUDIO_QUALITY_MEDIUM" },
+    { "itag": "251", "url": "https://x/audio-160.webm", "type": "audio/webm; codecs=\"opus\"",
+      "bitrate": 160000, "audioQuality": "AUDIO_QUALITY_MEDIUM" },
+    { "itag": "136", "type": "video/mp4; codecs=\"avc1.4d401f\"", "qualityLabel": "720p",
+      "width": 1280, "height": 720, "fps": 30, "bitrate": 1200000, "signatureCipher": "s=abc&url=https%3A%2F%2Fx" }
+  ],
+  "formatStreams": [
+    { "itag": "18", "url": "https://x/muxed-360.mp4", "type": "video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"",
+      "qualityLabel": "360p", "width": 640, "height": 360, "fps": 30, "bitrate": 500000 }
+  ]
+}

@@ -1,0 +1,39 @@
+#!/bin/sh
+# BananaTube: the YouTube client. Started by bananad the way a game is (it takes the DRM master while it runs
+# and gives it back on exit, and bananad brings the menu up again).
+#   run-bananatube [search words]
+# The settings are banana/bananatube.conf on the card; BANANA_TOP and BANANA_TOUCH are the same contract
+# BananaDS gets (docs/EMULATORS.md in BananaLinux).
+[ -x /usr/bin/bananatube ] || { echo "BananaTube isn't installed" >&2; exit 1; }
+
+D=/data/banana
+L=$D/logs
+mkdir -p $L
+
+export BANANA_TOP=${BANANA_TOP:-DSI-2}                  # the top panel's connector; the other is the bottom
+export BANANA_TOUCH=${BANANA_TOUCH:-fe5e0000.i2c}       # part of the bottom touchscreen's sysfs path
+
+# The first run writes the settings, so the file is there for the Settings screen and for editing on a card.
+[ -f "$D/bananatube.conf" ] || cat > "$D/bananatube.conf" <<'CONF'
+# BananaTube settings. See docs/ARCHITECTURE.md in the bananatube repository.
+backend = auto
+instance =
+quality = 480p
+audio_only_on_lid = yes
+history_size = 50
+cache_size = 12
+search_timeout_ms = 6000
+CONF
+
+# The clock, the time zone and the sound route come from the menu's settings, as they do for a game.
+[ -f "$D/settings.conf" ] || true
+
+# Its log, last run kept as .1 (readable on a computer over file sharing)
+[ -f $L/bananatube.log ] && mv -f $L/bananatube.log $L/bananatube.1.log
+
+# banana-perf's "balanced": the menu's schedutil ramp is too slow to start a video, and the VPU wants its
+# clock up. (The governor itself is banana-perf's job; this is the same choice the emulators make.)
+[ -x /usr/bin/banana-perf ] && /usr/bin/banana-perf balanced 2>/dev/null || true
+
+cd $D
+exec /usr/bin/bananatube "$@" >>$L/bananatube.log 2>&1
