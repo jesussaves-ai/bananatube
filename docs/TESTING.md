@@ -8,8 +8,8 @@ something the host tests cannot check: the panels, the decoder, the touch mappin
 - **A card with the build.** Settings ▸ Display & sound ▸ Theme is not involved; this is an app.
 - **SSH on** (Settings ▸ Network ▸ SSH, keys from `banana/ssh/authorized_keys`) so you can read the log and the
   memory numbers without taking the card out.
-- **`banana/logs/bananatube.log`** is where everything the client says goes (the launcher writes it; the last run
-  is kept as `.1`). `tail -f` it over SSH while you poke at the thing.
+- **`banana/logs/bananatube.log`** is where everything the client says goes (the launcher writes it; the run
+  before it is kept as `bananatube.1.log`). `tail -f` it over SSH while you poke at the thing.
 - **`sleep_debug = yes`** in `banana/bananad.conf` before the sleep tests: it adds the kernel's per-device resume
   times to `banana/logs/sleep-devices.log`, slowest first.
 
@@ -125,9 +125,9 @@ still in the field. |
 
 Send me:
 
-- `banana/logs/bananatube.log` (and `.1` if it restarted)
+- `banana/logs/bananatube.log` (and `bananatube.1.log`, the run before it)
 - `banana/bananatube.conf`
-- `banana/logs/bananad-sleep.log` (or `sleep.log`) for anything about the lid
+- `banana/logs/sleep.log` for anything about the lid
 - the overlay's drop count if it is a stutter
 - which of the two panels, and which panel size, if it is a drawing problem — the RG DS and the Plus scale
   differently, and that is where scaling bugs hide
