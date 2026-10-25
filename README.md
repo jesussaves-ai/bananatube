@@ -42,6 +42,16 @@ texture.
 *These are the bottom panel, rendered by the same code the handheld runs — `bananatube --shot` draws the client
 into a buffer with no DRM, no GPU and no network.*
 
+## Getting it on the handheld
+
+The Buildroot package (`buildroot/package/bananatube/`) builds the binary, installs the launcher and puts the
+app folder on the shelf. **One change lives outside the package**: the menu needs a systems list entry to show
+it, and `system/systems.conf.snippet` is exactly those seven lines to add to `/etc/banana/systems.conf` (or
+`/data/banana/systems.conf` on the card). Nothing else in BananaOS has to change.
+
+The client is started the way a game is: the menu lets go of the panels and runs `run-bananatube`, which takes
+the DRM master, plays, and gives it back when it exits — bananad's handover, the same one BananaDS uses.
+
 ## Build
 
 Needs `cmake`, a C11 compiler, and the dev packages for `libdrm`, `egl`, `glesv2`, `gbm`, `freetype2`, `libjpeg`,

@@ -8,7 +8,8 @@
 # keystroke would cost ~70 MB and 3-5 seconds.
 #
 # The binary takes the DRM master from bananad exactly as BananaDS does. Its launcher is
-# /usr/libexec/banana/run-bananatube.
+# /usr/libexec/banana/run-bananatube, and it appears on the shelf through the app folder installed below --
+# which needs one entry in /etc/banana/systems.conf: see the repository's system/systems.conf.snippet.
 #
 ################################################################################
 
@@ -30,6 +31,11 @@ BANANATUBE_CONF_OPTS = \
 define BANANATUBE_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(BANANATUBE_BUILDDIR)/bananatube $(TARGET_DIR)/usr/bin/bananatube
 	$(INSTALL) -D -m 0755 $(@D)/system/run-bananatube $(TARGET_DIR)/usr/libexec/banana/run-bananatube
+	# the shelf app: a folder with a marker the menu lists, and its name (the tile's art would go in media/)
+	$(INSTALL) -d $(TARGET_DIR)/usr/share/banana/apps/bananatube
+	$(INSTALL) -m 0644 $(@D)/system/bananatube.gamelist.xml \
+		$(TARGET_DIR)/usr/share/banana/apps/bananatube/gamelist.xml
+	touch "$(TARGET_DIR)/usr/share/banana/apps/bananatube/BananaTube.app"
 endef
 
 $(eval $(cmake-package))

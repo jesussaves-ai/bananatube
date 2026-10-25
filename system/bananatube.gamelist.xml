@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- BananaTube as a shelf app: one entry, so the menu has a tile to open. Its art, if any, goes in media/. -->
+<gameList>
+    <game>
+        <path>./BananaTube.app</path>
+        <name>YouTube</name>
+        <desc>Search and watch YouTube on the top panel, with the results on the bottom one.</desc>
+        <developer>BananaOS</developer>
+        <publisher>BananaOS</publisher>
+    </game>
+</gameList>
