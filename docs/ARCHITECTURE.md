@@ -5,14 +5,18 @@ developed from, see the plan alongside it; this file is the design as it stands.
 
 ## 1. Where it sits in BananaOS
 
-`banana-tube` is a standalone binary that bananad starts the way it starts a game:
+`banana-tube` is a standalone binary that the menu starts the way it starts a game (`ui/src/main.cpp`'s launch,
+the same path `run-bananads` takes):
 
-1. banana-ui writes the game's pid to `/run/banana/game.pid`, closes the DRM device, the input devices and the
-   sound device, and exits.
-2. bananad `fork`s and `exec`s `/usr/libexec/banana/run-bananatube`, and waits (`system/bananad/bananad.c`'s
-   `run()` — the same pattern as `run-bananads`).
+1. banana-ui closes the DRM device, the input devices and the sound device, sets the system's clock profile
+   (`banana-perf`), then `fork`s and `exec`s `/usr/libexec/banana/run-bananatube` in its own session (`setsid`).
+2. The parent writes the child's pid to `/run/banana/game.pid` and waits (`waitpid`).
 3. banana-tube opens `/dev/dri/card0` and takes the DRM master, which was left free.
-4. On exit it closes the device and drops the master; bananad's `waitpid` returns and it brings the menu back.
+4. On exit it closes the device and drops the master; banana-ui's `waitpid` returns, it reopens the panels and the
+   input and sound devices, records the play, and the menu comes back.
+
+bananad does not start it: it reads `/run/banana/game.pid` to `SIGSTOP`/`SIGCONT` the process group around a
+sleep and `SIGTERM` it on a shutdown, as it does for any game (`system/bananad/bananad.c`).
 
 The contract with the launcher is the one BananaDS gets, so `docs/EMULATORS.md`'s names are reused:
 `BANANA_TOP` (the top panel's connector, `DSI-2` on both handhelds) and `BANANA_TOUCH` (part of the bottom
