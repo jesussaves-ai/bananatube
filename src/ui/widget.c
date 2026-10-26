@@ -3,7 +3,9 @@
 #include "util.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 void widget_panel(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, int radius)
 {
@@ -53,6 +55,19 @@ void widget_spinner(DrawList *dl, const UiTheme *t, int cx, int cy, int radius, 
         uint32_t c = (i >= 6 || i < 2) ? t->accent : t->faint;
         dl_rect_rounded(dl, px - 2, py - 2, 4, 4, 2, c);
     }
+}
+
+void widget_header(DrawList *dl, const UiTheme *t, const char *title)
+{
+    dl_rect(dl, 0, 0, SCREEN_W, 44, t->bar);
+    widget_title(dl, t, 16, 0, 400, 44, title, ALIGN_LEFT);
+
+    time_t now = time(NULL);
+    struct tm tmv;
+    localtime_r(&now, &tmv);
+    char clock[16];
+    snprintf(clock, sizeof clock, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
+    widget_mono(dl, t, SCREEN_W - 140, 0, 124, 44, clock, ALIGN_RIGHT);
 }
 
 void widget_title(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align)

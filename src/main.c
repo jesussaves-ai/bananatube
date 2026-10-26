@@ -72,7 +72,7 @@ static const char *first_font(const char *env_name, const char *device, const ch
 typedef enum { SHOT_VIEW = 0, SHOT_TOP, SHOT_BOTTOM, SHOT_BOTH } ShotPanel;
 
 static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history,
-                ShotPanel panel);
+                bool settings, ShotPanel panel);
 static FontCtx *shot_fonts(void);
 static bool save_panels(const char *path, AppState *ui, FontCtx *fnt, BottomTex *pics, bool plus, ShotPanel panel);
 
@@ -278,6 +278,21 @@ static void log_memory(const char *when)
     log_line("memory (%s): bananatube %ld kB resident, %ld kB left on the device", when, rss, avail);
 }
 
+/* A setting changed in the app's own screen (VIEW_SETTINGS): write bananatube.conf, then apply the parts that
+ * take effect at once. The rest -- backend, timeout, instance, decoder, quality -- is read when the next search
+ * or video starts, so nothing has to be torn down here. */
+static void apply_setting(const Conf *conf, const char *conf_path, History *hist, ThumbCache *cache,
+                          const char *key)
+{
+    if (!conf_save(conf, conf_path)) log_line("could not write %s", conf_path);
+    if (hist && strcmp(key, "history_size") == 0) history_set_cap(hist, conf->history_size);
+    if (cache && strcmp(key, "cache_size") == 0) thumb_init(cache, conf->cache_size);
+    log_line("setting %s: backend=%s quality=%s lid_audio=%s history=%d cache=%d timeout=%d hwdec=%s",
+             key, conf_backend_name(conf->backend), conf_quality_name(conf->quality),
+             conf->audio_only_on_lid ? "yes" : "no", conf->history_size, conf->cache_size,
+             conf->search_timeout_ms, conf->hwdec);
+}
+
 
 /* ---- testing without the handheld -----------------------------------------------------------------------
  * The real client with no DRM, no EGL, no decoder and no input devices: the same AppState, the same ui_key,
@@ -337,6 +352,8 @@ static const char *action_name(UiAction a)
     case UI_THUMBS:         return "thumbs";
     case UI_SAVE_PROGRESS:  return "save progress";
     case UI_HISTORY:        return "history";
+    case UI_OPEN_SETTINGS:  return "settings";
+    case UI_SETTINGS_SAVE:  return "setting saved";
     case UI_QUIT:           return "quit";
     default:                return "?";
     }
@@ -349,6 +366,7 @@ static const char *view_name(View v)
     case VIEW_KEYBOARD: return "keyboard";
     case VIEW_PLAYING:  return "playing";
     case VIEW_HISTORY:  return "history";
+    case VIEW_SETTINGS: return "settings";
     default:            return "?";
     }
 }
@@ -580,6 +598,10 @@ static int cli_keys(int argc, char **argv)
                        st.width, st.height, st.vcodec);
                 if (rs == RESOLVE_OK) ui_set_playing(&ui, r->title, r->channel);
             }
+        } else if (a == UI_OPEN_SETTINGS) {
+            ui_open_settings(&ui, &conf);
+        } else if (a == UI_SETTINGS_SAVE) {
+            apply_setting(&conf, conf_path, NULL, NULL, ui.settings.changed_key);
         } else if (a == UI_QUIT) {
             printf("        quit\n");
             break;
@@ -617,7 +639,7 @@ int main(int argc, char **argv)
 
     if (argc > 1 && strcmp(argv[1], "--shot") == 0) {
         const char *out = argc > 2 ? argv[2] : "/tmp/bananatube.ppm";
-        bool kb = false, empty = false, plus = false, playing = false, history = false;
+        bool kb = false, empty = false, plus = false, playing = false, history = false, settings = false;
         ShotPanel panel = SHOT_VIEW;                 /* whichever panel carries this view's content */
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "keyboard") == 0) kb = true;
@@ -625,11 +647,12 @@ int main(int argc, char **argv)
             else if (strcmp(argv[i], "plus") == 0) plus = true;
             else if (strcmp(argv[i], "playing") == 0) playing = true;
             else if (strcmp(argv[i], "history") == 0) history = true;
+            else if (strcmp(argv[i], "settings") == 0) settings = true;
             else if (strcmp(argv[i], "top") == 0) panel = SHOT_TOP;
             else if (strcmp(argv[i], "bottom") == 0) panel = SHOT_BOTTOM;
             else if (strcmp(argv[i], "both") == 0) panel = SHOT_BOTH;
         }
-        return shot(out, kb, !empty, plus, playing, history, panel);
+        return shot(out, kb, !empty, plus, playing, history, settings, panel);
     }
 
     Conf conf;
@@ -814,6 +837,39 @@ int main(int argc, char **argv)
                 keys[nk].key = tapped; keys[nk].down = true; keys[nk].repeat = false;
                 nk++;
             }
+        } else if (touch.down && ui.view == VIEW_SETTINGS) {
+            /* The list is on the panel with the touchscreen, so a finger drives it too: a tap selects a row, a
+             * tap on the row already selected changes it. Typing the instance is the same keyboard as the
+             * query's, so it goes through the same actions. */
+            if (ui.settings.editing) {
+                char ch[8] = "";
+                size_t room = sizeof ui.settings.entry - strlen(ui.settings.entry) - 1;
+                BananaKey tapped = BK_NONE;
+                switch (kb_tap(&ui.settings.kb, touch.x, touch.y, ch, sizeof ch)) {
+                case KB_ACTION_CHAR:   if (room >= strlen(ch)) strncat(ui.settings.entry, ch, room); ui.dirty = true; break;
+                case KB_ACTION_SPACE:  if (room >= 1) strncat(ui.settings.entry, " ", room); ui.dirty = true; break;
+                case KB_ACTION_DELETE: ui_key(&ui, BK_B); break;
+                case KB_ACTION_LAYER:  ui_key(&ui, BK_X); break;
+                case KB_ACTION_SUBMIT: tapped = BK_START; break;
+                case KB_ACTION_CLOSE:  tapped = BK_SELECT; break;
+                default: break;
+                }
+                if (tapped != BK_NONE && nk < INPUT_EVENTS_MAX) {
+                    keys[nk].key = tapped; keys[nk].down = true; keys[nk].repeat = false;
+                    nk++;
+                }
+            } else {
+                int row = settings_hit(&ui.settings, touch.x, touch.y);
+                if (row >= 0) {
+                    BananaKey tapped = BK_NONE;
+                    if (row == ui.settings.sel) tapped = BK_A;          /* the selected row: change it */
+                    else { ui.settings.sel = row; ui.dirty = true; }     /* another row: just select it */
+                    if (tapped != BK_NONE && nk < INPUT_EVENTS_MAX) {
+                        keys[nk].key = tapped; keys[nk].down = true; keys[nk].repeat = false;
+                        nk++;
+                    }
+                }
+            }
         }
 
         for (int i = 0; i < nk && !g_quit; i++) {
@@ -909,6 +965,12 @@ int main(int argc, char **argv)
 #endif
             case UI_THUMBS:
                 request_visible_thumbs(&ui, &cache, thumbs);
+                break;
+            case UI_OPEN_SETTINGS:
+                ui_open_settings(&ui, &conf);
+                break;
+            case UI_SETTINGS_SAVE:
+                apply_setting(&conf, conf_path, &history, &cache, ui.settings.changed_key);
                 break;
             case UI_NONE:
             default:
@@ -1133,7 +1195,7 @@ static bool save_panels(const char *path, AppState *ui, FontCtx *fnt, BottomTex 
 }
 
 static int shot(const char *path, bool keyboard, bool with_results, bool plus, bool playing, bool show_history,
-                ShotPanel panel)
+                bool settings, ShotPanel panel)
 {
     AppState ui;
     ui_init(&ui);
@@ -1173,7 +1235,14 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
         ui.history_sel = 1;
     }
 
-    if (playing) {
+    if (settings) {
+        /* the app's own settings screen: a row with a value and help, so the screenshot says what it looks
+         * like (the real values come from a Conf with the defaults) */
+        static Conf shot_conf;
+        conf_defaults(&shot_conf);
+        ui_open_settings(&ui, &shot_conf);
+        ui.settings.sel = 1;                     /* Quality */
+    } else if (playing) {
         ui_set_playing(&ui, "Making a theme for BananaOS, start to finish", "Banana Dev");
         ui_set_playing_state(&ui, 4 * 60 + 12, 12 * 60 + 34, false, false, 854, 480);
         ui_set_full_state(&ui, 70, 480, true, 0);

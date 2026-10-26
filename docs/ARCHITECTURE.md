@@ -158,10 +158,11 @@ In order of preference:
 
 ## 5. The bottom screen's UI (Phase 2)
 
-Three views, one of which is drawn at a time: the **results grid** (the search field, three columns of tiles,
-the button hints), the **keyboard** over the grid, and later **playback**. `ui/view.c` owns the state and
-answers one question per button — "type this", "search", "play", "quit" — which is what keeps `main.c` free of
-screen logic and the whole thing testable without a display.
+Four views, one of which is drawn at a time: the **results grid** (the search field, three columns of tiles,
+the button hints), the **keyboard** over the grid, **playback**, the **watched list**, and the app's own
+**settings** screen. `ui/view.c` owns the state and answers one question per button — "type this", "search",
+"play", "quit" — which is what keeps `main.c` free of screen logic and the whole thing testable without a
+display.
 
 The drawing is the family of helpers in `ui/widget.c` (a card, a well, a hint chip, a bar, a spinner) plus the
 grid in `ui/results.c` and the keyboard in `input/keyboard.c`, all pushing DrawOps. **A tile's picture is not a
@@ -178,6 +179,16 @@ itself.
 The renderer (`display/render.c`) is deliberately **not** in the DRM half: it draws into any ARGB32 buffer, so
 the tests render at both panel sizes, and `bananatube --shot` renders the client to a picture on a machine with
 no panels at all (which is how the screenshots in the README are made, and what a CI run can diff).
+
+**The settings screen** (`ui/settings.c`) is the file's own rows, in the app: backend, quality, lid audio, the
+watched list's size, the picture cache, the search timeout, the decoder and the instance URL. Changing one calls
+`conf_set()` on the app's `Conf` and reports `UI_SETTINGS_SAVE`; `main.c` writes `bananatube.conf` and applies
+what takes effect at once (the history's cap, the picture cache), and the rest is read when the next search or
+video starts, so nothing has to be torn down mid-play. The instance URL is the one typed row, so it opens the
+same keyboard the query uses (`kb_draw_as`, with "save" on its key instead of "search"). The list is on the
+bottom panel — the one with the touchscreen — and what the selected row does on the top one, the way BananaOS's
+own Settings is laid out; a tap selects a row and a tap on the selected row changes it. **START** on the results
+opens it, which is the key the menu uses for its own Settings.
 
 ## 6. Playback (Phase 3)
 
@@ -282,6 +293,7 @@ screenful resident, and the least recently drawn slot is the one reused. Picture
 | **2. The bottom screen** | **Done.** The search field, the keyboard, the results grid, and the background thumbnail fetcher and decoder (`net/thumbworker.c`), blitted by the CPU renderer. |
 | **3. Video on the top screen** | **Done.** `player/player.c` and `player/osd.c` render through `mpv_render_context` into the existing EGL surface, with the caps in force; the bottom screen becomes the player's (pause, seek, stop). The decoder measurement is the one thing left for the device. |
 | **4. Transport and persistence** | **Done.** The transport row, the quality switch, the watched list (JSON, not SQLite: a few kilobytes do not need a database), and audio-only with the lid shut. |
+| **The app's settings** | **Done.** `ui/settings.c`: the rows `bananatube.conf` holds, changed in the app (START on the results) and saved as they change, so the card and the menu's own Settings are never needed to configure it. |
 
 Phase 1 was first because it is the risky one: it touches the same display path banana-ui and BananaDS use, and it
 has to coexist with bananad's handover. With both panels lighting up from one process, everything after it is an

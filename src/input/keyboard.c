@@ -179,6 +179,11 @@ KbAction kb_tap(Keyboard *k, int x, int y, char *out, size_t out_cap)
 
 void kb_draw(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, int w, int h)
 {
+    kb_draw_as(dl, k, t, x, y, w, h, "search");
+}
+
+void kb_draw_as(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, int w, int h, const char *submit)
+{
     int key_w, key_h, wide_h;
     kb_layout(x, y, w, h, &key_w, &key_h, &wide_h);
     int total = KB_ROWS * (key_h + KB_GAP) + wide_h + KB_PAD * 2;
@@ -208,7 +213,7 @@ void kb_draw(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, in
         bool on = (k->row == KB_ROWS && k->wide == i);
         bool go = (i == 3);                       /* the search key: the one that does something */
         dl_rect_rounded(dl, kx, wy, ww, wide_h, 7, (on || go) ? t->accent : t->panel);
-        dl_text(dl, kx, wy, ww, wide_h, WIDE[k->layer][i], FONT_UI, (on || go) ? 15 : 14,
-                (on || go) ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+        dl_text(dl, kx, wy, ww, wide_h, (i == 3 && submit) ? submit : WIDE[k->layer][i], FONT_UI,
+                (on || go) ? 15 : 14, (on || go) ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
     }
 }

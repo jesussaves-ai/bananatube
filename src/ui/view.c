@@ -7,7 +7,6 @@
 #include <string.h>
 #include <time.h>
 
-#define HEADER_H   44
 #define SEARCH_Y   48
 #define SEARCH_H   34
 #define GRID_Y     88
@@ -118,6 +117,13 @@ void ui_set_history(AppState *st, const History *h)
     st->dirty = true;
 }
 
+void ui_open_settings(AppState *st, Conf *conf)
+{
+    settings_open(&st->settings, conf);
+    st->view = VIEW_SETTINGS;
+    st->dirty = true;
+}
+
 void ui_set_playing_stopped(AppState *st, const char *why)
 {
     st->playing.active = false;
@@ -165,6 +171,16 @@ UiAction ui_key(AppState *st, BananaKey key)
 {
     if (key == BK_HOME) return UI_QUIT;
 
+    if (st->view == VIEW_SETTINGS) {
+        switch (settings_key(&st->settings, key)) {
+        case SETTINGS_MOVED:   st->dirty = true; return UI_NONE;
+        case SETTINGS_CHANGED: st->dirty = true; return UI_SETTINGS_SAVE;
+        case SETTINGS_CLOSE:   st->view = VIEW_RESULTS; layout(st); st->dirty = true; return UI_NONE;
+        case SETTINGS_NONE:
+        default:               return UI_NONE;
+        }
+    }
+
     if (st->view == VIEW_PLAYING) {
         switch (key) {
         case BK_B:      return UI_STOP;
@@ -199,6 +215,7 @@ UiAction ui_key(AppState *st, BananaKey key)
         case BK_A:      return UI_PLAY;
         case BK_B:      st->view = VIEW_RESULTS; layout(st); st->dirty = true; return UI_NONE;
         case BK_SELECT: st->view = VIEW_RESULTS; layout(st); st->dirty = true; return UI_NONE;
+        case BK_START:  return UI_OPEN_SETTINGS;
         default:        return UI_NONE;
         }
     }
@@ -274,6 +291,8 @@ UiAction ui_key(AppState *st, BananaKey key)
         st->dirty = true;
         return UI_THUMBS;                         /* the visible set may have changed */
     }
+    case BK_START:                               /* the app's own settings (START, as BananaOS's menu) */
+        return UI_OPEN_SETTINGS;
     default:
         return UI_NONE;
     }
@@ -283,16 +302,7 @@ UiAction ui_key(AppState *st, BananaKey key)
 
 static void draw_header(AppState *st, DrawList *dl)
 {
-    const UiTheme *t = &st->theme;
-    dl_rect(dl, 0, 0, SCREEN_W, HEADER_H, t->bar);
-    widget_title(dl, t, 16, 0, 400, HEADER_H, "YouTube", ALIGN_LEFT);
-
-    time_t now = time(NULL);
-    struct tm tmv;
-    localtime_r(&now, &tmv);
-    char clock[16];
-    snprintf(clock, sizeof clock, "%02d:%02d", tmv.tm_hour, tmv.tm_min);
-    widget_mono(dl, t, SCREEN_W - 140, 0, 124, HEADER_H, clock, ALIGN_RIGHT);
+    widget_header(dl, &st->theme, "YouTube");
 }
 
 static void draw_search_bar(AppState *st, DrawList *dl)
@@ -337,6 +347,17 @@ static void draw_hints(AppState *st, DrawList *dl)
         x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 12;
         x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 12;
         x += widget_hint(dl, t, x, y, BK_START, "search", true) + 12;
+    } else if (st->view == VIEW_SETTINGS) {
+        if (st->settings.editing) {
+            x += widget_hint(dl, t, x, y, BK_A, "type", true) + 12;
+            x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 12;
+            x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 12;
+            x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 12;
+            x += widget_hint(dl, t, x, y, BK_START, "save", true) + 12;
+        } else {
+            x += widget_hint(dl, t, x, y, BK_A, "change", true) + 12;
+            x += widget_hint(dl, t, x, y, BK_B, "back", false) + 12;
+        }
     } else {
         x += widget_hint(dl, t, x, y, BK_A, "play", true) + 12;
         x += widget_hint(dl, t, x, y, BK_SELECT, "search", true) + 12;
@@ -551,6 +572,7 @@ void ui_draw_top(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
 
     if (st->view == VIEW_PLAYING) return;        /* mpv's video, with the overlay drawn over it */
     if (st->view == VIEW_HISTORY) { draw_header(st, dl); draw_history(st, dl); return; }
+    if (st->view == VIEW_SETTINGS) { settings_draw_top(&st->settings, dl, t); return; }
 
     draw_header(st, dl);
     draw_search_bar(st, dl);
@@ -576,6 +598,11 @@ void ui_draw_bot(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
     }
     if (st->view == VIEW_KEYBOARD) {
         kb_draw(dl, &st->kb, t, KB_BOX_X, KB_BOX_Y, KB_BOX_W, KB_BOX_H);
+        draw_hints(st, dl);
+        return;
+    }
+    if (st->view == VIEW_SETTINGS) {
+        settings_draw_bot(&st->settings, dl, t);
         draw_hints(st, dl);
         return;
     }

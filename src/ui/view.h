@@ -12,6 +12,7 @@
 #include "net/backend.h"
 #include "net/thumbnail.h"
 #include "ui/results.h"
+#include "ui/settings.h"
 #include "ui/theme.h"
 
 #include <stdbool.h>
@@ -22,6 +23,7 @@ typedef enum {
     VIEW_KEYBOARD,           /* the keyboard over the grid, while a query is typed */
     VIEW_PLAYING,            /* a video is on the top panel: this screen says what and controls it */
     VIEW_HISTORY,            /* what has been watched, to carry on with one */
+    VIEW_SETTINGS,           /* the app's own settings: backend, quality, decoder, ... */
 } View;
 
 /* What the top panel is doing, as the bottom screen needs to show it. */
@@ -71,6 +73,8 @@ typedef enum {
     UI_PREV_VIDEO,           /* L1 */
     UI_SAVE_PROGRESS,        /* the history wants writing */
     UI_HISTORY,              /* SELECT on the results: the watched list */
+    UI_OPEN_SETTINGS,        /* START on the results: the app's own settings */
+    UI_SETTINGS_SAVE,        /* a setting changed: bananatube.conf wants saving and applying */
 } UiAction;
 
 typedef struct {
@@ -84,6 +88,7 @@ typedef struct {
     Results  results;
     Keyboard kb;
     Playing  playing;
+    SettingsView settings;       /* the app's own settings screen (VIEW_SETTINGS) */
     const History *history;      /* the list the history view shows; owned by main.c */
     int      history_sel;
     int      history_scroll;
@@ -110,5 +115,8 @@ void      ui_set_playing_state(AppState *st, double position, double duration, b
 void      ui_set_full_state(AppState *st, int volume, int quality, bool video_on, int dropped);
 void      ui_set_history(AppState *st, const History *h);
 void      ui_set_playing_stopped(AppState *st, const char *why);
+/* Open the app's own settings (START on the results). The Conf is main.c's; the view changes it in place and
+ * reports UI_SETTINGS_SAVE when it does, so main.c can write the file and apply the change. */
+void      ui_open_settings(AppState *st, Conf *conf);
 
 #endif /* BANANATUBE_VIEW_H */

@@ -23,6 +23,7 @@ Phase 1 (this repository's first commit) — the skeleton, built and tested:
 | ✅ | **Phase 2**: the search field and on-screen keyboard, the results grid, and pictures fetched and decoded on background threads |
 | ✅ | **Phase 3**: libmpv rendering the video into the top panel's EGL surface, hard-decoded, with the memory caps in force and an overlay; the bottom screen becomes the player's |
 | ✅ | **Phase 4**: a transport row (pause, seek, volume, quality, prev/next, stop) that is tapped or driven by the buttons; a watched list that carries on where it stopped; and audio-only with the lid shut |
+| ✅ | The app's own settings screen (**START** on the results): backend, quality, lid audio, the watched list's size, the picture cache, the search timeout, the decoder and the instance URL, written to `bananatube.conf` as they change |
 
 **The top panel carries the content and the bottom one the controls.** The search field, the results grid and
 the video are on the top screen — the main one, where BananaOS's own menu is — and the bottom screen, the one with
@@ -45,6 +46,7 @@ network (see [Test](#test)).
 | Before a search | <img src="docs/img/first-run.png" width="380" alt="Top: the search field and the words Press SELECT to search YouTube. Bottom: what the buttons do down there"> |
 | Playing a video | <img src="docs/img/playing.png" width="380" alt="Top: the video (empty in this render — nothing is decoding). Bottom: its title, the channel, the resolution being decoded, the volume, a progress bar and the position, and a row of buttons: previous, volume down, pause, volume up, the quality, next and stop"> |
 | Carrying on | <img src="docs/img/history.png" width="380" alt="Top: the watched list, five videos each with its channel and how far in it got, the selected one marked. Bottom: the selected one's details"> |
+| Settings | <img src="docs/img/settings.png" width="380" alt="Top: the settings header, the selected setting's name, its value and what it does. Bottom: eight settings as rows with their values, the selected one marked with arrows"> |
 
 ## The controls
 
@@ -53,7 +55,8 @@ network (see [Test](#test)).
 | Browsing | **SELECT** (or **X**) opens the keyboard · **A** plays what is selected · **Y** the watched list · **B** clears the results · **HOME** leaves |
 | Typing | **A** types the key under the cursor · **B** deletes · **X** capitals · **Y** space · **START** searches · **SELECT** puts the keyboard away · the D-pad moves |
 | Playing | **START** pause · **LEFT**/**RIGHT** or **L2**/**R2** seek ±10 s · **UP**/**DOWN** volume · **L1**/**R1** previous/next video · **X** the quality (360p → 480p → 720p) · **B** stops · **HOME** leaves |
-| By touch | The keyboard, the transport row and everything on the bottom panel are tappable; the top panel has no touchscreen |
+| Settings | **START** on the results opens the app's own settings · the D-pad moves · **A** or **LEFT**/**RIGHT** changes a value · **A** on the instance row opens the keyboard (**START** saves it) · **B** goes back |
+| By touch | The keyboard, the transport row, the settings list and everything on the bottom panel are tappable; the top panel has no touchscreen |
 
 **The search needs Wi-Fi.** Settings ▸ Network joins a network; without one the app says "Could not reach
 YouTube. Is Wi-Fi on?" rather than pretending it searched.
@@ -101,6 +104,7 @@ invisible:
 | `render` | the software renderer at 1.0 **and 1.6**: a draw that forgets to scale is invisible on the RG DS and paints an empty tile over its neighbour on the Plus (it did) |
 | `parse` | both backends' replies, from canned bodies |
 | `ui` | the grid's geometry and selection, the keyboard, and what each button means |
+| `settings` | the app's own settings screen: the rows, cycling a value, the instance typed with the keyboard, and that a change reaches the `Conf` |
 | `worker` | the thumbnail queue and the JPEG decode, with the fetch injected: a real JPEG, decoded off the thread |
 | `player` | that libmpv's options *took*: the 16 MiB demuxer cache, no cache, no yt-dlp of its own, no config file — the settings that decide whether a 1 GB handheld survives |
 | `history` | the watched list: it survives a restart, moves an opening video to the front, keeps a fractional position through the JSON round trip, and obeys (and clamps) `history_size` |
@@ -117,7 +121,7 @@ BananaOS's ffmpeg has the kernel's v4l2m2m decoders and no Rockchip MPP library.
 
 ## Run
 
-On a handheld, bananad starts it through the launcher:
+On a handheld, the menu starts it through the launcher:
 
 ```sh
 /usr/libexec/banana/run-bananatube
@@ -152,7 +156,7 @@ src/
     resolver.c            id -> playable URL, and the last-resort yt-dlp run
     thumbnail.c           a fixed-size LRU of small RGB565 textures, and a JPEG decoder
   player/                 (Phase 3) libmpv: one surface, the RAM caps, the OSD
-  ui/                     (Phase 2) the search screen, the keyboard, the results grid
+  ui/                     (Phase 2) the search screen, the keyboard, the results grid, the settings screen
 tests/                    the host tests
 buildroot/package/        the Buildroot package
 system/run-bananatube     the launcher bananad starts

@@ -66,5 +66,8 @@ int       kb_height(void);
 #define KB_BOX_H (SCREEN_H - 30)          /* 30: the hint row at the bottom (view.c's HINTS_H) */
 
 void      kb_draw(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, int w, int h);
+/* The same, with the submit key's own word: "search" for a query, "save" for the instance URL. */
+void      kb_draw_as(DrawList *dl, const Keyboard *k, const UiTheme *t, int x, int y, int w, int h,
+                     const char *submit);
 
 #endif /* BANANATUBE_KEYBOARD_H */

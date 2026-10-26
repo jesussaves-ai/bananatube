@@ -178,6 +178,11 @@ need the network — what the search returned and what pressing A resolved to:
 
 Key names are the ones the log prints: `up down left right A B X Y L1 R1 L2 R2 start select home`.
 
+**START** on the results opens the app's own settings screen — `--keys "start,down,down,A"` walks to a row and
+changes it — where the D-pad moves, A or LEFT/RIGHT changes a value, and the instance URL is typed with the same
+keyboard the query uses. A change is written to `bananatube.conf` at once, so a `--keys` run edits the file it
+was pointed at (`BANANATUBE_CONF`).
+
 Both `--search --frames` and `--keys` write PPMs — `--show` them, or `magick x.ppm x.png`. A frame is both
 panels stacked, the way the two screens sit. Add `--plus` for the RG DS Plus's 1024x768.
 

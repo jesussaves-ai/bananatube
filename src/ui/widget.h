@@ -26,6 +26,9 @@ void widget_bar(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, floa
 /* A spinner: `phase` is 0..1 round the circle. */
 void widget_spinner(DrawList *dl, const UiTheme *t, int cx, int cy, int radius, float phase);
 
+/* The header strip every view shares: the bar, the title on the left, the clock on the right. */
+void widget_header(DrawList *dl, const UiTheme *t, const char *title);
+
 /* Text with the palette's colours and the sizes this app uses, so the two views agree. */
 void widget_title(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);
 void widget_label(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);

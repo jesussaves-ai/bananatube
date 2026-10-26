@@ -54,7 +54,7 @@ typedef struct {
     bool     wrap;                /* break at spaces into at most max_lines lines of `w` */
     int      max_lines;
     int      line_height;         /* 0: the font's own line height */
-    char     text[160];           /* already truncated: the op does not carry a pointer */
+    char     text[256];           /* already truncated: the op does not carry a pointer */
 
     int      image;               /* OP_IMAGE: the texture slot */
     Fit      fit;
