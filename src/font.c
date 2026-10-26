@@ -9,6 +9,10 @@
 #include FT_FREETYPE_H
 
 #define GLYPH_CACHE 1024
+/* A direct-mapped index from (font, size, codepoint) to a slot: the lookup was a linear scan of all 1024
+ * slots, and every character of every string is looked up several times a frame (the text is measured for
+ * its width, wrapped, and drawn). A collision only costs a reload, never a wrong glyph. */
+#define GLYPH_INDEX 4096
 
 typedef struct {
     FontId   id;
@@ -22,8 +26,19 @@ struct FontCtx {
     FT_Library lib;
     FT_Face    face[3];
     Glyph      glyph[GLYPH_CACHE];
+    int        index[GLYPH_INDEX];   /* hash of the key -> slot + 1, or 0 */
+    int        lh[3][201];           /* line height by face and size: FT_Set_Pixel_Sizes is not free and this
+                                      * is asked for on every text draw */
     int        next;      /* round-robin replacement */
 };
+
+static uint32_t glyph_hash(FontId id, int size, uint32_t cp)
+{
+    uint32_t h = cp * 2654435761u;
+    h ^= (uint32_t)size * 40503u;
+    h ^= (uint32_t)id * 2246822519u;
+    return h & (GLYPH_INDEX - 1);
+}
 
 static int utf8_next(const char **s)
 {
@@ -88,16 +103,25 @@ static Glyph *glyph_get(FontCtx *f, FontId id, int size, uint32_t cp)
     if (size < 1) size = 1;
     if (size > 200) size = 200;
 
-    for (int i = 0; i < GLYPH_CACHE; i++) {
-        Glyph *g = &f->glyph[i];
+    uint32_t hash = glyph_hash(id, size, cp);
+    int idx = f->index[hash];
+    if (idx) {
+        Glyph *g = &f->glyph[idx - 1];
         if (g->bm && g->id == id && g->size == size && g->cp == cp) return g;
     }
 
-    Glyph *g = &f->glyph[f->next];
-    f->next = (f->next + 1) % GLYPH_CACHE;
-
     if (FT_Set_Pixel_Sizes(f->face[id], 0, (FT_UInt)size)) return NULL;
     if (FT_Load_Char(f->face[id], cp, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL)) return NULL;
+
+    Glyph *g = &f->glyph[f->next];
+    int slot = f->next;
+    f->next = (f->next + 1) % GLYPH_CACHE;
+
+    /* the slot being reused leaves the index if it was what this key's hash pointed at */
+    if (g->bm) {
+        uint32_t oh = glyph_hash(g->id, g->size, g->cp);
+        if (f->index[oh] == slot + 1) f->index[oh] = 0;
+    }
 
     const FT_GlyphSlot s = f->face[id]->glyph;
     int w = (int)s->bitmap.width, h = (int)s->bitmap.rows;
@@ -113,14 +137,18 @@ static Glyph *glyph_get(FontCtx *f, FontId id, int size, uint32_t cp)
     g->bx = s->bitmap_left;
     g->by = s->bitmap_top;
     g->adv = (int)(s->advance.x >> 6);
+    f->index[hash] = slot + 1;
     return g;
 }
 
 int font_line_height(FontCtx *f, FontId id, int size)
 {
     if (!f || !f->face[id]) return size;
-    FT_Set_Pixel_Sizes(f->face[id], 0, (FT_UInt)(size < 1 ? 1 : size));
-    return (int)(f->face[id]->size->metrics.height >> 6);
+    if (size < 1) size = 1;
+    if (size > 200) size = 200;
+    if (f->lh[id][size]) return f->lh[id][size];
+    FT_Set_Pixel_Sizes(f->face[id], 0, (FT_UInt)size);
+    return f->lh[id][size] = (int)(f->face[id]->size->metrics.height >> 6);
 }
 
 int font_text_width(FontCtx *f, FontId id, int size, const char *utf8)
@@ -136,8 +164,9 @@ int font_text_width(FontCtx *f, FontId id, int size, const char *utf8)
 }
 
 /* Breaks `utf8` at spaces into lines no wider than `w`, at most `max_lines`, and reports how many it made.
- * The last line is ellipsised when the text does not fit. Byte-wise, which is right for a break at a space in
- * UTF-8: a multi-byte character never contains 0x20. */
+ * The last line is ellipsised when the text does not fit. The width is measured as the line is walked: the
+ * first version re-measured the whole prefix at every character (O(len^2) a line), and a line is wrapped
+ * again every frame it is drawn, so a long title paid for its own length twice over. */
 static int wrap_text(FontCtx *f, FontId id, int size, const char *utf8, int w, int max_lines,
                      char out[][192], int cap)
 {
@@ -149,27 +178,29 @@ static int wrap_text(FontCtx *f, FontId id, int size, const char *utf8, int w, i
     int n = 0;
     const char *p = utf8;
     while (*p && n < max_lines) {
-        /* the longest run of words that fits (or, if a single word does not, as much of it as does) */
-        int taken = 0, last_space = -1, len = 0;
-        while (p[len] && p[len] != '\n') {
-            if (p[len] == ' ') last_space = len;
-            char probe[192];
-            size_t l = (size_t)len + 1;
-            if (l >= sizeof probe) break;
-            memcpy(probe, p, l);
-            probe[l] = '\0';
-            if (font_text_width(f, id, size, probe) > w) break;
-            taken = len + 1;
-            len++;
+        /* the longest run of characters that fits (or, if the first one alone does not, that one anyway) */
+        int taken = 0, last_space = -1, width = 0;
+        const char *q = p;
+        while (*q && *q != '\n') {
+            if (*q == ' ') last_space = (int)(q - p);
+            const char *next = q;
+            int cp = utf8_next(&next);
+            Glyph *g = glyph_get(f, id, size, (uint32_t)cp);
+            int adv = g ? g->adv : size / 2;
+            if (taken > 0 && width + adv > w) break;
+            width += adv;
+            taken = (int)(next - p);
+            q = next;
+            if (taken >= 191) break;
         }
         /* a word boundary is nicer than a chopped word, as long as it is not the whole line */
         int cut = taken;
         if (p[cut] && p[cut] != '\n' && last_space > 0 && last_space < taken) cut = last_space;
         /* Never stall: if even one character does not fit, take it anyway so p advances. */
         if (cut == 0 && p[0] && p[0] != '\n') {
-            const char *q = p;
-            utf8_next(&q);
-            cut = (int)(q - p);
+            const char *r = p;
+            utf8_next(&r);
+            cut = (int)(r - p);
         }
 
         size_t out_n = (size_t)cut;
@@ -182,10 +213,22 @@ static int wrap_text(FontCtx *f, FontId id, int size, const char *utf8, int w, i
         memcpy(out[n], p, out_n);
         out[n][out_n] = '\0';
         if (last && more) {
-            /* it does not all fit: end the last line with an ellipsis */
-            while (out_n > 1 && font_text_width(f, id, size, out[n]) + font_text_width(f, id, size, "...") > w)
-                out[n][--out_n] = '\0';
-            str_copy(out[n] + out_n, sizeof out[n] - out_n, "...");
+            /* it does not all fit: end the last line with an ellipsis, trimming whole characters */
+            int ell = font_text_width(f, id, size, "...");
+            int fit = 0, fw = 0;
+            const char *r = out[n];
+            while (*r) {
+                const char *next = r;
+                int cp = utf8_next(&next);
+                Glyph *g = glyph_get(f, id, size, (uint32_t)cp);
+                int adv = g ? g->adv : size / 2;
+                if (fw + adv + ell > w && fit > 0) break;
+                fw += adv;
+                fit = (int)(next - out[n]);
+                r = next;
+            }
+            out[n][fit] = '\0';
+            str_copy(out[n] + fit, sizeof out[n] - fit, "...");
         }
         n++;
         if (!more) break;
@@ -222,12 +265,12 @@ void font_draw_box(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
     if (valign == VALIGN_MIDDLE) top = y + (h - block) / 2;
     else if (valign == VALIGN_BOTTOM) top = y + h - block;
 
+    int font_lh = font_line_height(f, id, size);
     for (int i = 0; i < nl; i++) {
-        int tw = font_text_width(f, id, size, lines[i]);
+        int tw = (align == ALIGN_LEFT) ? w : font_text_width(f, id, size, lines[i]);
         int px = x;
         if (align == ALIGN_CENTER) px = x + (w - tw) / 2;
         else if (align == ALIGN_RIGHT) px = x + w - tw;
-        int font_lh = font_line_height(f, id, size);
         int py = top + i * lh + font_lh;               /* the baseline */
         font_draw(f, dst, dst_w, dst_h, clip_x, clip_y, clip_w, clip_h,
                   px, py - font_lh, tw > w ? w : tw, lh, lines[i], id, size, color, ALIGN_LEFT, VALIGN_TOP);
@@ -241,11 +284,13 @@ void font_draw(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
 {
     if (!f || !dst || !utf8 || !*utf8) return;
 
-    int tw = font_text_width(f, id, size, utf8);
     int lh = font_line_height(f, id, size);
     int px = x;
-    if (align == ALIGN_CENTER) px = x + (w - tw) / 2;
-    else if (align == ALIGN_RIGHT) px = x + w - tw;
+    if (align != ALIGN_LEFT) {                         /* the width is only needed to place it */
+        int tw = font_text_width(f, id, size, utf8);
+        if (align == ALIGN_CENTER) px = x + (w - tw) / 2;
+        else if (align == ALIGN_RIGHT) px = x + w - tw;
+    }
     int py = y + lh;                                   /* the baseline */
     if (valign == VALIGN_MIDDLE) py = y + (h - lh) / 2 + lh;
     else if (valign == VALIGN_BOTTOM) py = y + h;
@@ -266,22 +311,29 @@ void font_draw(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
         px += g->adv;
         if (!g->bm) continue;
 
-        for (int yy = 0; yy < g->h; yy++) {
-            int dy = gy + yy;
-            if (dy < cy0 || dy >= cy1 || dy < 0 || dy >= dst_h) continue;
-            for (int xx = 0; xx < g->w; xx++) {
-                int dx = gx + xx;
-                if (dx < cx0 || dx >= cx1 || dx < 0 || dx >= dst_w) continue;
-                uint32_t cov = g->bm[(size_t)yy * g->w + xx];
+        /* The visible part of the glyph, clamped once: the old loop tested the clip and the buffer bounds on
+         * every one of the glyph's pixels. */
+        int x0 = gx < cx0 ? cx0 : gx, x1 = gx + g->w > cx1 ? cx1 : gx + g->w;
+        int y0 = gy < cy0 ? cy0 : gy, y1 = gy + g->h > cy1 ? cy1 : gy + g->h;
+        if (x0 < 0) x0 = 0;
+        if (x1 > dst_w) x1 = dst_w;
+        if (y0 < 0) y0 = 0;
+        if (y1 > dst_h) y1 = dst_h;
+        if (x0 >= x1 || y0 >= y1) continue;
+
+        for (int dy = y0; dy < y1; dy++) {
+            const uint8_t *brow = g->bm + (size_t)(dy - gy) * g->w;
+            uint32_t *drow = dst + (size_t)dy * dst_w;
+            for (int dx = x0; dx < x1; dx++) {
+                uint32_t cov = brow[dx - gx];
                 if (!cov) continue;
                 uint32_t alpha = (cov * a) / 255;
-                uint32_t *p = &dst[(size_t)dy * dst_w + dx];
-                uint32_t o = *p;
-                uint32_t orr = (o >> 16) & 0xff, og = (o >> 8) & 0xff, ob = o & 0xff;
-                uint32_t rr = (cr * alpha + orr * (255 - alpha)) / 255;
-                uint32_t gg = (cg * alpha + og * (255 - alpha)) / 255;
-                uint32_t bb = (cb * alpha + ob * (255 - alpha)) / 255;
-                *p = 0xff000000u | (rr << 16) | (gg << 8) | bb;
+                if (alpha == 255) { drow[dx] = 0xff000000u | (cr << 16) | (cg << 8) | cb; continue; }
+                uint32_t o = drow[dx];
+                uint32_t rr = (cr * alpha + ((o >> 16) & 0xff) * (255 - alpha)) / 255;
+                uint32_t gg = (cg * alpha + ((o >> 8) & 0xff) * (255 - alpha)) / 255;
+                uint32_t bb = (cb * alpha + (o & 0xff) * (255 - alpha)) / 255;
+                drow[dx] = 0xff000000u | (rr << 16) | (gg << 8) | bb;
             }
         }
     }

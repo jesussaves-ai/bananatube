@@ -40,6 +40,17 @@ static void fill_rect(RenderCanvas *b, int x, int y, int w, int h, int radius, u
     if (x1 <= x0 || y1 <= y0) return;
 
     if (radius <= 0) {
+        /* An opaque rectangle is a store a pixel, not a blend: the background fill of a 1024x768 panel alone
+         * was 786k calls into blend_px() every time it was repainted. */
+        uint32_t a = (color >> 24) & 0xff;
+        if (a == 0 || a == 0xff) {
+            uint32_t c = 0xff000000u | (color & 0x00ffffffu);
+            for (int yy = y0; yy < y1; yy++) {
+                uint32_t *p = b->canvas + (size_t)yy * b->w + x0;
+                for (int xx = x0; xx < x1; xx++) *p++ = c;
+            }
+            return;
+        }
         for (int yy = y0; yy < y1; yy++)
             for (int xx = x0; xx < x1; xx++) blend_px(b->canvas, b->w, b->h, xx, yy, color);
         return;
@@ -94,20 +105,27 @@ static void draw_image(RenderCanvas *b, const DrawOp *op, const BottomTex *tex, 
     }
 
     int ox = bx + (bw - dw) / 2, oy = by + (bh - dh) / 2;
-    for (int yy = 0; yy < dh; yy++) {
-        int dy = oy + yy;
-        if (dy < cy || dy >= cy + ch || dy < 0 || dy >= b->h) continue;
-        int sy = (op->fit == FIT_COVER) ? yy * t->h / (dh ? dh : 1) : yy * t->h / (dh ? dh : 1);
+
+    /* Only the part of the picture inside the clip, and an opaque picture is a store: the whole box was
+     * walked and every pixel passed through blend_px(), clip or no clip. */
+    int y0 = oy < cy ? cy : oy, y1 = oy + dh > cy + ch ? cy + ch : oy + dh;
+    int x0 = ox < cx ? cx : ox, x1 = ox + dw > cx + cw ? cx + cw : ox + dw;
+    if (y0 < 0) y0 = 0;
+    if (y1 > b->h) y1 = b->h;
+    if (x0 < 0) x0 = 0;
+    if (x1 > b->w) x1 = b->w;
+
+    for (int dy = y0; dy < y1; dy++) {
+        int sy = (dy - oy) * t->h / (dh ? dh : 1);
         if (sy >= t->h) sy = t->h - 1;
-        for (int xx = 0; xx < dw; xx++) {
-            int dx = ox + xx;
-            if (dx < cx || dx >= cx + cw || dx < 0 || dx >= b->w) continue;
-            int sx = xx * t->w / (dw ? dw : 1);
+        const uint8_t *srow = t->pixels + (size_t)sy * t->w * 2;
+        uint32_t *drow = b->canvas + (size_t)dy * b->w;
+        for (int dx = x0; dx < x1; dx++) {
+            int sx = (dx - ox) * t->w / (dw ? dw : 1);
             if (sx >= t->w) sx = t->w - 1;
-            const uint8_t *p = t->pixels + ((size_t)sy * t->w + sx) * 2;
+            const uint8_t *p = srow + (size_t)sx * 2;
             uint16_t c = (uint16_t)((p[0] << 8) | p[1]);
-            uint32_t rgb = 0xff000000u | (((c >> 11) & 0x1f) << 19) | (((c >> 5) & 0x3f) << 10) | ((c & 0x1f) << 3);
-            blend_px(b->canvas, b->w, b->h, dx, dy, rgb);
+            drow[dx] = 0xff000000u | (((c >> 11) & 0x1f) << 19) | (((c >> 5) & 0x3f) << 10) | ((c & 0x1f) << 3);
         }
     }
 }
