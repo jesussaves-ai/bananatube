@@ -165,6 +165,12 @@ static int wrap_text(FontCtx *f, FontId id, int size, const char *utf8, int w, i
         /* a word boundary is nicer than a chopped word, as long as it is not the whole line */
         int cut = taken;
         if (p[cut] && p[cut] != '\n' && last_space > 0 && last_space < taken) cut = last_space;
+        /* Never stall: if even one character does not fit, take it anyway so p advances. */
+        if (cut == 0 && p[0] && p[0] != '\n') {
+            const char *q = p;
+            utf8_next(&q);
+            cut = (int)(q - p);
+        }
 
         size_t out_n = (size_t)cut;
         const char *rest = p + cut;
@@ -221,9 +227,10 @@ void font_draw_box(FontCtx *f, uint32_t *dst, int dst_w, int dst_h,
         int px = x;
         if (align == ALIGN_CENTER) px = x + (w - tw) / 2;
         else if (align == ALIGN_RIGHT) px = x + w - tw;
-        int py = top + i * lh + lh;                    /* the baseline */
+        int font_lh = font_line_height(f, id, size);
+        int py = top + i * lh + font_lh;               /* the baseline */
         font_draw(f, dst, dst_w, dst_h, clip_x, clip_y, clip_w, clip_h,
-                  px, py - lh, tw > w ? w : tw, lh, lines[i], id, size, color, ALIGN_LEFT, VALIGN_TOP);
+                  px, py - font_lh, tw > w ? w : tw, lh, lines[i], id, size, color, ALIGN_LEFT, VALIGN_TOP);
     }
 }
 

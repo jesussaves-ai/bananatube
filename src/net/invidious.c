@@ -257,17 +257,22 @@ static int invidious_search(const Conf *c, const char *query, SearchResult *out,
 
 static int invidious_detail(const Conf *c, const char *id, VideoDetail *out)
 {
-    char url[URL_LEN];
-    snprintf(url, sizeof url, "%s/api/v1/videos/%s", invidious_instance(c, 0), id);
-    HttpResponse r;
-    if (!http_get(url, c->search_timeout_ms, &r)) {
-        log_line("invidious: video failed: %s", http_error(&r));
+    for (int i = 0; ; i++) {
+        const char *base = invidious_instance(c, i);
+        if (!base) break;
+        char url[URL_LEN];
+        snprintf(url, sizeof url, "%s/api/v1/videos/%s", base, id);
+        HttpResponse r;
+        if (!http_get(url, c->search_timeout_ms, &r)) {
+            log_line("invidious: video failed: %s", http_error(&r));
+            http_response_free(&r);
+            continue;
+        }
+        int ok = invidious_parse_video(r.data ? r.data : "", id, out);
         http_response_free(&r);
-        return -1;
+        if (ok == 0) return 0;
     }
-    int ok = invidious_parse_video(r.data ? r.data : "", id, out);
-    http_response_free(&r);
-    return ok;
+    return -1;
 }
 
 int invidious_parse_video(const char *json, const char *id, VideoDetail *out)
@@ -311,14 +316,24 @@ static int collect_piped(const cJSON *arr, Format *out, int max, int n, bool aud
 
 static ResolveStatus invidious_streams(const Conf *c, const char *id, Format *out, int max)
 {
-    char url[URL_LEN];
-    snprintf(url, sizeof url, "%s/api/v1/videos/%s", invidious_instance(c, 0), id);
-    HttpResponse r;
-    if (!http_get(url, c->search_timeout_ms, &r)) { http_response_free(&r); return RESOLVE_NO_NETWORK; }
-    ResolveStatus st;
-    invidious_parse_formats(r.data ? r.data : "", out, max, &st);
-    http_response_free(&r);
-    return st;
+    for (int i = 0; ; i++) {
+        const char *base = invidious_instance(c, i);
+        if (!base) break;
+        char url[URL_LEN];
+        snprintf(url, sizeof url, "%s/api/v1/videos/%s", base, id);
+        HttpResponse r;
+        if (!http_get(url, c->search_timeout_ms, &r)) {
+            log_line("invidious: streams failed: %s", http_error(&r));
+            http_response_free(&r);
+            continue;
+        }
+        ResolveStatus st;
+        invidious_parse_formats(r.data ? r.data : "", out, max, &st);
+        http_response_free(&r);
+        if (st == RESOLVE_OK || st == RESOLVE_NEEDS_CIPHER || st == RESOLVE_NO_SUITABLE_FORMAT)
+            return st;
+    }
+    return RESOLVE_NO_NETWORK;
 }
 
 int invidious_parse_formats(const char *json, Format *out, int max, ResolveStatus *status)

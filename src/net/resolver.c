@@ -183,7 +183,7 @@ static ResolveStatus resolve_once(const Conf *c, const char *video_id, StreamUrl
                 out->audio_kbps = fmts[ai].audio_kbps;
             }
         }
-        out->muxed = muxed || out->audio_url[0] == '\0';
+        out->muxed = muxed || out->audio_url[0] != '\0';
         log_line("resolver: %s %dx%d@%d %s%s (%d kbps audio)", order[b]->name,
                  out->width, out->height, out->fps, out->vcodec,
                  out->muxed ? " muxed" : " + separate audio", out->audio_kbps);
