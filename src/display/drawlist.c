@@ -221,7 +221,7 @@ DrawOp *dl_image(DrawList *dl, int x, int y, int w, int h, int image, Fit fit, u
 
 /* ---- the damage between two frames ------------------------------------------------------------------- */
 
-#define LOOKAHEAD 3
+#define LOOKAHEAD 8
 
 void damage_next(const Damage *own, const Damage *missed, Damage *out, Damage *missed_out)
 {
@@ -261,7 +261,15 @@ void dl_diff(const DrawList *prev, const DrawList *cur, Damage *out)
                 }
             }
         }
-        if (ba < 0) break;                       /* no resync in reach: the tails below are all damage */
+        if (ba < 0) {
+            /* No resync in reach: this pair changed. Damage the two ops and step past them. Breaking out here
+             * (as this did) marked *every* remaining op as damage, so one changed key -- four ops in a row, past
+             * a window of three -- repainted the whole keyboard, and one moved selection repainted the grid. */
+            damage_op(out, &prev->op[i]);
+            damage_op(out, &cur->op[j]);
+            i++; j++;
+            continue;
+        }
 
         for (int k = 0; k < ba; k++) damage_op(out, &prev->op[i + k]);
         for (int k = 0; k < bb; k++) damage_op(out, &cur->op[j + k]);

@@ -223,21 +223,27 @@ static bool stream_fetches(const Conf *c, const char *url)
 
 ResolveStatus resolver_resolve(const Conf *c, const char *video_id, StreamUrl *out)
 {
-    http_set_ip_family(AF_UNSPEC);
-    ResolveStatus st = resolve_once(c, video_id, out);
-    if (st != RESOLVE_OK) return st;
-    if (stream_fetches(c, out->url)) return RESOLVE_OK;
-
-    /* The URL came from an address the CDN will not serve it to. Ask again over IPv4 -- the address family a
-     * handheld's media fetch usually ends up using, and the one that does not rotate -- and use that URL if it
-     * fetches. If the second attempt is no better, the first is returned as it was: the player's failure will
-     * say the same thing it said before, and the log above says why. */
-    log_line("resolver: asking again over IPv4, for a URL bound to that address");
+    /* A stream URL is bound to the address that asked the API for it -- the ip= parameter is inside its
+     * signature -- and libmpv resolves the host again for its own fetch. Ask and validate over IPv4 first (the
+     * family a handheld's media fetch usually ends up using, and the one that does not rotate), so the URL
+     * handed to the player is bound to the address it will use. A URL validated over the default family came
+     * back "HTTP 403 Forbidden" from the CDN when the player fetched it over IPv4: the signature's ip= was an
+     * IPv6 address the player never used. */
+    StreamUrl s;
     http_set_ip_family(AF_INET);
-    StreamUrl second;
-    ResolveStatus st2 = resolve_once(c, video_id, &second);
-    bool ok = (st2 == RESOLVE_OK) && stream_fetches(c, second.url);
+    ResolveStatus st = resolve_once(c, video_id, &s);
+    if (st == RESOLVE_OK && stream_fetches(c, s.url)) {
+        *out = s;
+        http_set_ip_family(AF_UNSPEC);
+        return RESOLVE_OK;
+    }
+
+    /* An IPv6-only network, or a CDN that refused that address: ask again over whatever the resolver picks. */
+    log_line("resolver: asking again over any address family");
     http_set_ip_family(AF_UNSPEC);
-    if (ok) { *out = second; return RESOLVE_OK; }
+    st = resolve_once(c, video_id, &s);
+    bool ok = (st == RESOLVE_OK) && stream_fetches(c, s.url);
+    http_set_ip_family(AF_UNSPEC);
+    if (ok) { *out = s; return RESOLVE_OK; }
     return st;
 }
