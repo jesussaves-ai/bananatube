@@ -178,6 +178,7 @@ moment it is played, with its ~70 MB freed before libmpv opens the stream.
 ## License
 
 GPL-3.0-or-later — the same as BananaOS. See [LICENSE](LICENSE).
+
 ---
 
 ## Support
