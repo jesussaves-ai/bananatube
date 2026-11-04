@@ -177,3 +177,13 @@ URLs, no cipher), YouTube's InnerTube API next (the Android VR client still answ
 ## License
 
 GPL-3.0-or-later — the same as BananaOS. See [LICENSE](LICENSE).
+
+---
+
+## Support
+
+If you'd like to support the project, you can buy me a coffee on Ko-fi:
+
+**[https://ko-fi.com/jesussavesai](https://ko-fi.com/jesussavesai)**
+
+And honestly -- paid or free, it all means a lot to me. A donation, a star, a bug report, or just using what I make: thank you. ❤️
