@@ -1041,14 +1041,21 @@ int main(int argc, char **argv)
 #ifdef BANANATUBE_MPV
         if (player) {
             player_tick(player);
-            if (player_active(player)) {
+            if (player_eof(player)) {
+                player_close(player);
+                if (ui.playing.active) {
+                    if (ui.playing.id[0]) {
+                        history_progress(&history, ui.playing.id, 0);
+                        char path[512];
+                        history_path(conf_path, path, sizeof path);
+                        history_save(&history, path);
+                    }
+                    ui_set_playing_stopped(&ui, "Finished.");
+                }
+            } else if (player_active(player)) {
                 ui_set_playing_state(&ui, player_position(player), player_duration(player),
                                      player_paused(player), player_buffering(player),
                                      player_width(player), player_height(player));
-                if (player_eof(player)) {
-                    player_close(player);
-                    ui_set_playing_stopped(&ui, "Finished.");
-                }
             } else if (ui.playing.active) {
                 /* it stopped under us: an error, or the stream ended */
                 const char *why = player_error(player);

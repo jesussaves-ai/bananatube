@@ -54,6 +54,11 @@ int main(void)
     check(m != NULL);
     if (!m) { player_destroy(p); test_done(); }
 
+    /* Only a natural end is "finished"; a user stop is not. */
+    check(player_end_is_eof(MPV_END_FILE_REASON_EOF));
+    check(!player_end_is_eof(MPV_END_FILE_REASON_STOP));
+    check(!player_end_is_eof(MPV_END_FILE_REASON_QUIT));
+
     /* ---- memory: the whole point ---- */
     check_int_prop(m, "demuxer-max-bytes", 16 * 1024 * 1024);
     check_int_prop(m, "demuxer-max-back-bytes", 4 * 1024 * 1024);
@@ -106,8 +111,12 @@ int main(void)
     /* the URL is handed to mpv, so the geometry the resolver found is what the UI shows at once */
     check_int(player_width(p), 640);
     check_int(player_height(p), 480);
+    check(!player_eof(p));
 
     player_tick(p);            /* drains whatever mpv has said so far */
+    player_close(p);
+    check(!player_active(p));
+    check(!player_eof(p));
 
     player_destroy(p);
     test_done();

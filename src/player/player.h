@@ -63,6 +63,8 @@ double  player_position(const Player *p);        /* seconds, 0 when unknown */
 double  player_duration(const Player *p);
 bool    player_buffering(const Player *p);       /* reading ahead: what the spinner is for */
 bool    player_eof(const Player *p);
+/* The END_FILE reason rule: only a natural end is "finished"; a stop is not. */
+bool    player_end_is_eof(int reason);
 int     player_width(const Player *p);           /* the picture's size, for the badge */
 int     player_height(const Player *p);
 int     player_dropped(const Player *p);         /* frames the renderer dropped (a stutter to explain) */

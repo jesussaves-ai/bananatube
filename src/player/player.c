@@ -216,11 +216,21 @@ bool player_open(Player *p, const StreamUrl *s)
     return true;
 }
 
+/* Drain events queued for the file that was just stopped, so its END_FILE cannot land after the next load. */
+static void drain_events(Player *p)
+{
+    for (;;) {
+        mpv_event *e = mpv_wait_event(p->mpv, 0);
+        if (!e || e->event_id == MPV_EVENT_NONE) break;
+    }
+}
+
 void player_close(Player *p)
 {
     if (!p) return;
     const char *cmd[] = { "stop", NULL };
     mpv_command(p->mpv, cmd);
+    drain_events(p);
     p->active = false;
     p->eof = false;
     p->buffering = false;
@@ -240,12 +250,12 @@ void player_tick(Player *p)
         case MPV_EVENT_END_FILE: {
             mpv_event_end_file *f = e->data;
             p->active = false;
+            p->eof = f && player_end_is_eof(f->reason);
             if (f && f->reason == MPV_END_FILE_REASON_ERROR) {
                 const char *r = mpv_error_string(f->error);
                 snprintf(p->error, sizeof p->error, "%s", r ? r : "playback failed");
                 log_line("player: %s", p->error);
-            } else {
-                p->eof = true;
+            } else if (p->eof) {
                 log_line("player: end of file");
             }
             p->frame = true;
@@ -374,6 +384,11 @@ double player_position(const Player *p) { return p ? p->position : 0; }
 double player_duration(const Player *p) { return p ? p->duration : 0; }
 bool   player_buffering(const Player *p) { return p ? p->buffering : false; }
 bool   player_eof(const Player *p) { return p ? p->eof : false; }
+
+bool player_end_is_eof(int reason)
+{
+    return reason == MPV_END_FILE_REASON_EOF;
+}
 int    player_width(const Player *p) { return p ? p->width : 0; }
 int    player_height(const Player *p) { return p ? p->height : 0; }
 int    player_dropped(const Player *p) { return p ? p->dropped : 0; }
