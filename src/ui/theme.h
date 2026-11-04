@@ -1,7 +1,7 @@
 /* theme.h -- the palette the two views draw with.
  *
- * Fixed for now, matching the menu's own dark palette (ui/rnds/RndsUI.cpp in BananaLinux) so the client looks
- * like the thing it was started from. A layout theme's `colors` would slot in here (Phase 4).
+ * The menu's own dark/light palettes and named accent colours (ui/rnds/RndsUI.cpp in BananaLinux), so the
+ * client looks like the thing it was started from. An unknown theme/accent falls back to dark/yellow.
  */
 #ifndef BANANATUBE_THEME_H
 #define BANANATUBE_THEME_H
@@ -13,5 +13,6 @@ typedef struct {
 } UiTheme;
 
 UiTheme ui_theme(void);
+UiTheme ui_theme_with(const char *theme, const char *accent);
 
 #endif /* BANANATUBE_THEME_H */

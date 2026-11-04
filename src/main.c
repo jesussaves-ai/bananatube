@@ -756,6 +756,10 @@ int main(int argc, char **argv)
 
     AppState ui;
     ui_init(&ui);
+    char theme[16] = "dark", accent[16] = "yellow";
+    file_key_value("/data/banana/settings.conf", "theme", theme, sizeof theme);
+    file_key_value("/data/banana/settings.conf", "accent", accent, sizeof accent);
+    ui.theme = ui_theme_with(theme, accent);
     ui_set_history(&ui, &history);
     if (initial && *initial) {
         str_copy(ui.query, sizeof ui.query, initial);
