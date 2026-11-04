@@ -19,7 +19,7 @@ Phase 1 (this repository's first commit) — the skeleton, built and tested:
 | ✅ | Buttons, touchscreen and lid read from `/dev/input` (`BTN_EAST` is A, `BTN_SOUTH` is B: the RG DS's layout) |
 | ✅ | The software screen: draw lists, damage diffing, `memcpy` blits, rounded boxes, text through FreeType |
 | ✅ | The backend core: Invidious/Piped and InnerTube, the stream-format rules, the thumbnail cache, settings |
-| ✅ | `buildroot/package/bananatube` and the launcher `system/run-bananatube` |
+| ✅ | The launcher `system/run-bananatube`; BananaOS's `buildroot/package/bananatube` builds the binary and installs the app folder |
 | ✅ | **Phase 2**: the search field and on-screen keyboard, the results grid, and pictures fetched and decoded on background threads |
 | ✅ | **Phase 3**: libmpv rendering the video into the top panel's EGL surface, hard-decoded, with the memory caps in force and an overlay; the bottom screen becomes the player's |
 | ✅ | **Phase 4**: a transport row (pause, seek, volume, quality, prev/next, stop) that is tapped or driven by the buttons; a watched list that carries on where it stopped; and audio-only with the lid shut |
@@ -63,12 +63,12 @@ YouTube. Is Wi-Fi on?" rather than pretending it searched.
 
 ## Getting it on the handheld
 
-The Buildroot package (`buildroot/package/bananatube/`) builds the binary, installs the launcher and puts the
-app folder on the shelf. **Two lines live outside the package**, both written out as snippets: the menu needs a
-systems list entry to show the tile (`system/systems.conf.snippet`, into `/etc/banana/systems.conf` — or the
-card's `/data/banana/systems.conf`, which the menu prefers when it is there), and the theme needs the `[app]`
-marker to make that tile an app, so A starts it rather than opening a folder of one game
-(`system/systems.cfg.snippet`). Nothing else in BananaOS has to change.
+The Buildroot package lives in [BananaLinux](https://github.com/JorreFog/BananaLinux) at
+`buildroot/package/bananatube/`. It builds this repository's client, installs the launcher and puts the app folder
+on the shelf. The same BananaLinux tree owns the two menu lines: the `[bananatube]` section in
+`system/rootfs/etc/banana/systems.conf` and the `bananatube` app marker in `ui/assets/rnds/systems.cfg`
+(`video.png`, `Banana [app]`). A card's own `/data/banana/systems.conf` still wins over the image's, exactly as
+with any other system.
 
 The client is started the way a game is: the menu lets go of the panels and runs `run-bananatube`, which takes
 the DRM master, plays, and gives it back when it exits — bananad's handover, the same one BananaDS uses.
@@ -86,7 +86,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j4
 ```
 
-For the handheld it is built by Buildroot; see `buildroot/package/bananatube/`.
+For the handheld it is built by BananaLinux's Buildroot package (`buildroot/package/bananatube/` in that tree).
 
 ## Test
 
@@ -158,8 +158,7 @@ src/
   player/                 (Phase 3) libmpv: one surface, the RAM caps, the OSD
   ui/                     (Phase 2) the search screen, the keyboard, the results grid, the settings screen
 tests/                    the host tests
-buildroot/package/        the Buildroot package
-system/run-bananatube     the launcher bananad starts
+system/run-bananatube     the launcher the menu runs
 docs/ARCHITECTURE.md      the design, and why each choice was made
 ```
 
