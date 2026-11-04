@@ -3,7 +3,6 @@
 #include "net/http.h"          /* the cJSON helpers */
 #include "util.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -82,17 +81,10 @@ bool history_save(const History *h, const char *path)
     cJSON_Delete(root);
     if (!text) return false;
 
-    /* Rename over the old file: a card pulled mid-write then has the old history, not half of one. */
-    char tmp[512];
-    snprintf(tmp, sizeof tmp, "%s.new", path);
-    FILE *f = fopen(tmp, "w");
-    if (!f) { free(text); return false; }
-    fputs(text, f);
-    fclose(f);
+    /* Temp + fsync + rename: a card pulled mid-write then has the old history, not half of one. */
+    bool ok = file_write_atomic(path, text, strlen(text));
     free(text);
-
-    if (rename(tmp, path) != 0) { remove(tmp); return false; }
-    return true;
+    return ok;
 }
 
 static int index_of(const History *h, const char *id)

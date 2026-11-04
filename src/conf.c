@@ -119,9 +119,8 @@ bool conf_load(Conf *c, const char *path)
 
 bool conf_save(const Conf *c, const char *path)
 {
-    FILE *f = fopen(path, "w");
-    if (!f) return false;
-    fprintf(f,
+    char buf[4096];
+    int n = snprintf(buf, sizeof buf,
         "# BananaTube: settings for the YouTube client (Settings > System, or edit this file).\n"
         "#\n"
         "# backend            auto, invidious or innertube. \"auto\" tries your Invidious instance first and\n"
@@ -147,6 +146,6 @@ bool conf_save(const Conf *c, const char *path)
         conf_backend_name(c->backend), c->instance, conf_quality_name(c->quality),
         c->audio_only_on_lid ? "yes" : "no",
         c->history_size, c->cache_size, c->search_timeout_ms, c->hwdec);
-    fclose(f);
-    return true;
+    if (n < 0 || (size_t)n >= sizeof buf) return false;
+    return file_write_atomic(path, buf, (size_t)n);
 }

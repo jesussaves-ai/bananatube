@@ -1,11 +1,15 @@
 /* util.c */
 #include "util.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 void log_line(const char *fmt, ...)
 {
@@ -78,7 +82,7 @@ char *file_read(const char *path, size_t *size_out)
     if (!f) return NULL;
     if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
     long n = ftell(f);
-    if (n < 0) { fclose(f); return NULL; }
+    if (n < 0 || (unsigned long)n > FILE_READ_MAX) { fclose(f); return NULL; }
     rewind(f);
     char *buf = malloc((size_t)n + 1);
     if (!buf) { fclose(f); return NULL; }
@@ -87,6 +91,78 @@ char *file_read(const char *path, size_t *size_out)
     buf[got] = '\0';
     if (size_out) *size_out = got;
     return buf;
+}
+
+/* A best-effort directory sync: the file itself is already fsynced, and exFAT may not accept this. */
+static void sync_parent(const char *path)
+{
+    char dir[512];
+    str_copy(dir, sizeof dir, path);
+    char *slash = strrchr(dir, '/');
+    if (!slash) return;
+    if (slash == dir) slash[1] = '\0';
+    else *slash = '\0';
+    int fd = open(dir, O_RDONLY | O_DIRECTORY);
+    if (fd >= 0) { fsync(fd); close(fd); }
+}
+
+bool file_write_atomic(const char *path, const void *data, size_t len)
+{
+    if (!path || (!data && len)) return false;
+    char tmp[512];
+    int n = snprintf(tmp, sizeof tmp, "%s.new", path);
+    if (n < 0 || (size_t)n >= sizeof tmp) return false;
+
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return false;
+    const char *p = data;
+    size_t left = len;
+    while (left) {
+        ssize_t w = write(fd, p, left);
+        if (w < 0) {
+            if (errno == EINTR) continue;
+            close(fd);
+            unlink(tmp);
+            return false;
+        }
+        p += w;
+        left -= (size_t)w;
+    }
+    if (fsync(fd) != 0 || close(fd) != 0) { unlink(tmp); return false; }
+    if (rename(tmp, path) != 0) { unlink(tmp); return false; }
+    sync_parent(path);
+    return true;
+}
+
+bool file_key_value(const char *path, const char *key, char *out, size_t cap)
+{
+    if (out && cap) out[0] = '\0';
+    if (!path || !key || !out || cap == 0) return false;
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+
+    bool found = false;
+    char line[512];
+    while (!found && fgets(line, sizeof line, f)) {
+        char *s = line;
+        while (*s == ' ' || *s == '\t') s++;
+        if (*s == '#' || *s == ';' || *s == '\n' || *s == '\0') continue;
+        char *eq = strchr(s, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *k = s;
+        char *e = k + strlen(k);
+        while (e > k && (e[-1] == ' ' || e[-1] == '\t')) *--e = '\0';
+        if (strcmp(k, key) != 0) continue;
+        char *v = eq + 1;
+        while (*v == ' ' || *v == '\t') v++;
+        e = v + strlen(v);
+        while (e > v && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ' || e[-1] == '\t')) *--e = '\0';
+        str_copy(out, cap, v);
+        found = true;
+    }
+    fclose(f);
+    return found;
 }
 
 int clampi(int v, int lo, int hi)

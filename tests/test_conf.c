@@ -3,6 +3,7 @@
 #include "test.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -71,6 +72,20 @@ int main(void)
     Conf missing;
     check(!conf_load(&missing, "/tmp/bananatube-does-not-exist"));
     check_int(missing.quality, QUALITY_480);
+
+    /* saving writes the same values back */
+    char save_path[] = "/tmp/bananatube-conf-save-XXXXXX";
+    int sfd = mkstemp(save_path);
+    check(sfd >= 0);
+    if (sfd >= 0) {
+        close(sfd);
+        check(conf_save(&c, save_path));
+        Conf saved;
+        check(conf_load(&saved, save_path));
+        check_int(saved.cache_size, c.cache_size);
+        check_str(saved.instance, c.instance);
+        unlink(save_path);
+    }
 
     test_done();
 }

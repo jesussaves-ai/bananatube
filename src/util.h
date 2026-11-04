@@ -26,9 +26,21 @@ void fmt_duration(int seconds, char *out, size_t cap);
 int64_t now_ms(void);
 
 /* ---- files ------------------------------------------------------------------------------------------- */
+/* A settings or history file is a few kilobytes; refuse a corrupted or hostile card file before it is
+ * allocated. */
+#define FILE_READ_MAX (2u * 1024u * 1024u)
+
 /* Reads a whole file into a malloc'd NUL-terminated buffer, or NULL. *size_out (may be NULL) is the
- * length without the terminator. */
+ * length without the terminator. NULL when the file is missing, unreadable or larger than FILE_READ_MAX. */
 char *file_read(const char *path, size_t *size_out);
+
+/* Writes `len` bytes to `path` through a temp file, fsync and rename, so a power cut leaves the old file.
+ * The file fsync/rename are required; the directory fsync is best-effort (exFAT may refuse it). */
+bool file_write_atomic(const char *path, const void *data, size_t len);
+
+/* One `key = value` from a simple settings file (`#`/`;` comments, spaces around the `=`). Returns false
+ * and an empty string when the file or key is missing. */
+bool file_key_value(const char *path, const char *key, char *out, size_t cap);
 
 /* ---- numbers ----------------------------------------------------------------------------------------- */
 int   clampi(int v, int lo, int hi);

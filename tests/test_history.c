@@ -63,6 +63,9 @@ int main(void)
     str_copy(h.query, sizeof h.query, "banana theme");
     check(history_save(&h, path));
     check(access(path, R_OK) == 0);
+    char tmp_name[300];
+    snprintf(tmp_name, sizeof tmp_name, "%s.new", path);
+    check(access(tmp_name, F_OK) != 0);
 
     History back;
     check(history_load(&back, path));

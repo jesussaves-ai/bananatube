@@ -109,7 +109,7 @@ endif()
 # ---- tests --------------------------------------------------------------------------------------------
 if(BANANATUBE_TESTS)
     enable_testing()
-    foreach(t drawlist keys conf parse select lru ui worker render history args settings)
+    foreach(t drawlist keys conf parse select lru ui worker render history args settings util)
         add_executable(test_${t} tests/test_${t}.c)
         target_link_libraries(test_${t} PRIVATE bananatube_core)
         target_compile_definitions(test_${t} PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
