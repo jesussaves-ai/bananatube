@@ -28,8 +28,10 @@ typedef enum {
 
 /* What the top panel is doing, as the bottom screen needs to show it. */
 typedef struct {
+    char   id[VIDEO_ID_LEN];       /* the video the history belongs to */
     char   title[TITLE_LEN];
     char   channel[CHANNEL_LEN];
+    int    duration_sec;           /* what the search/history knew, -1 unknown */
     double position, duration;
     int    width, height;
     bool   paused, buffering, active;
@@ -109,7 +111,7 @@ void      ui_draw_bot(AppState *st, DrawList *dl, const BottomTex *tex, int tex_
 void      ui_set_results(AppState *st, const SearchResult *items, int n, const char *message);
 void      ui_set_status(AppState *st, const char *message);
 /* The video started: the bottom screen becomes the player's. */
-void      ui_set_playing(AppState *st, const char *title, const char *channel);
+void      ui_set_playing(AppState *st, const char *id, const char *title, const char *channel, int duration_sec);
 void      ui_set_playing_state(AppState *st, double position, double duration, bool paused, bool buffering,
                                int width, int height);
 void      ui_set_full_state(AppState *st, int volume, int quality, bool video_on, int dropped);

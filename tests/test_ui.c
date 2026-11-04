@@ -284,7 +284,10 @@ int main(void)
 
     /* ---- what the buttons mean while a video plays ---- */
     ui_init(&st);
-    str_copy(st.playing.title, sizeof st.playing.title, "A video");
+    ui_set_playing(&st, "dQw4w9WgXcQ", "A video", "A channel", 754);
+    check_str(st.playing.id, "dQw4w9WgXcQ");
+    check_str(st.playing.title, "A video");
+    check_int(st.playing.duration_sec, 754);
     st.view = VIEW_PLAYING;
     check_int(ui_key(&st, BK_LEFT), UI_SEEK_BACK);
     check_int(ui_key(&st, BK_RIGHT), UI_SEEK_FORWARD);

@@ -72,11 +72,13 @@ void ui_set_status(AppState *st, const char *message)
     st->dirty = true;
 }
 
-void ui_set_playing(AppState *st, const char *title, const char *channel)
+void ui_set_playing(AppState *st, const char *id, const char *title, const char *channel, int duration_sec)
 {
     st->view = VIEW_PLAYING;
+    str_copy(st->playing.id, sizeof st->playing.id, id ? id : "");
     str_copy(st->playing.title, sizeof st->playing.title, title ? title : "");
     str_copy(st->playing.channel, sizeof st->playing.channel, channel ? channel : "");
+    st->playing.duration_sec = duration_sec > 0 ? duration_sec : -1;
     st->playing.position = st->playing.duration = 0;
     st->playing.paused = false;
     st->playing.buffering = true;

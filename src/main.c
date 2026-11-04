@@ -160,12 +160,14 @@ typedef struct {
     char   id[VIDEO_ID_LEN];
     char   title[TITLE_LEN];
     char   channel[CHANNEL_LEN];
+    int    duration_sec;
     double resume_at;               /* where the history says it got to */
 } PendingPlay;
 
 /* Ask for a video. Returns true when the resolve started; the answer arrives in take_resolved(). */
 static bool start_video(AppState *ui, ResolveJob *job, PendingPlay *pending, const Conf *conf,
-                        const char *id, const char *title, const char *channel, double resume_at)
+                        const char *id, const char *title, const char *channel, int duration_sec,
+                        double resume_at)
 {
     if (!ui || !job || !id || !*id) return false;
     if (!resolve_job_begin(job, conf, id)) {
@@ -176,6 +178,7 @@ static bool start_video(AppState *ui, ResolveJob *job, PendingPlay *pending, con
     str_copy(pending->id, sizeof pending->id, id);
     str_copy(pending->title, sizeof pending->title, title ? title : "");
     str_copy(pending->channel, sizeof pending->channel, channel ? channel : "");
+    pending->duration_sec = duration_sec;
     pending->resume_at = resume_at;
     ui_set_status(ui, "Resolving\xE2\x80\xA6");
     ui->dirty = true;
@@ -210,8 +213,8 @@ static void take_resolved(AppState *ui, Player *player, History *hist, const Con
         return;
     }
 
-    history_touch(hist, pending->id, pending->title, pending->channel, s.height > 0 ? 0 : -1);
-    ui_set_playing(ui, pending->title, pending->channel);
+    history_touch(hist, pending->id, pending->title, pending->channel, pending->duration_sec);
+    ui_set_playing(ui, pending->id, pending->title, pending->channel, pending->duration_sec);
     ui->playing.quality = (int)conf->quality;
     ui->playing.volume = player_volume(player);
     ui->playing.video_on = true;
@@ -223,9 +226,8 @@ static void take_resolved(AppState *ui, Player *player, History *hist, const Con
 static void save_progress(AppState *ui, Player *player, History *hist, const char *conf_path, bool write_file)
 {
     if (!player || !ui->playing.active || !hist) return;
-    if (ui->results.count == 0) return;
-    const SearchResult *r = &ui->results.item[ui->results.sel];
-    history_progress(hist, r->id, player_position(player));
+    if (!ui->playing.id[0]) return;
+    history_progress(hist, ui->playing.id, player_position(player));
     if (write_file) {
         char path[512];
         history_path(conf_path, path, sizeof path);
@@ -241,7 +243,7 @@ static void play_neighbour(AppState *ui, Player *player, History *hist, const Co
     save_progress(ui, player, hist, conf_path, true);
     if (!results_step(&ui->results, delta)) return;
     const SearchResult *r = &ui->results.item[ui->results.sel];
-    start_video(ui, job, pending, conf, r->id, r->title, r->channel, 0);
+    start_video(ui, job, pending, conf, r->id, r->title, r->channel, r->duration_sec, 0);
 }
 
 /* X while a video plays: 360p -> 480p -> 720p, and back. It re-resolves at the new size and carries on from
@@ -256,15 +258,15 @@ static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hi
     }
     conf_save(conf, conf_path);
 
-    if (!player || !ui->playing.active || ui->results.count == 0) {
+    if (!player || !ui->playing.active || !ui->playing.id[0]) {
         ui->playing.quality = (int)conf->quality;
         ui->dirty = true;
         return true;
     }
-    const SearchResult *r = &ui->results.item[ui->results.sel];
     double at = player_position(player);
     save_progress(ui, player, hist, conf_path, true);
-    return start_video(ui, job, pending, conf, r->id, r->title, r->channel, at);
+    return start_video(ui, job, pending, conf, ui->playing.id, ui->playing.title, ui->playing.channel,
+                       ui->playing.duration_sec, at);
 }
 #endif
 
@@ -417,7 +419,8 @@ static int cli_bench(int argc, char **argv)
         ui.view = VIEW_KEYBOARD;
         str_copy(ui.query, sizeof ui.query, "banana theme");
     } else if (strcmp(view, "playing") == 0) {
-        ui_set_playing(&ui, "Making a theme for BananaOS, start to finish", "Banana Dev");
+        ui_set_playing(&ui, "dQw4w9WgXcQ", "Making a theme for BananaOS, start to finish", "Banana Dev",
+                       12 * 60 + 34);
         ui_set_playing_state(&ui, 4 * 60 + 12, 12 * 60 + 34, false, false, 854, 480);
         ui_set_full_state(&ui, 70, 480, true, 0);
     }
@@ -608,7 +611,7 @@ static int cli_keys(int argc, char **argv)
                 ResolveStatus rs = resolver_resolve(&conf, r->id, &st);
                 printf("        \"%s\" -> %s (%dx%d %s)\n", r->title, resolve_status_text(rs),
                        st.width, st.height, st.vcodec);
-                if (rs == RESOLVE_OK) ui_set_playing(&ui, r->title, r->channel);
+                if (rs == RESOLVE_OK) ui_set_playing(&ui, r->id, r->title, r->channel, r->duration_sec);
             }
         } else if (a == UI_OPEN_SETTINGS) {
             ui_open_settings(&ui, &conf);
@@ -921,14 +924,15 @@ int main(int argc, char **argv)
                     if (ui.history_sel >= 0 && ui.history_sel < history.count) {
                         const HistoryItem *it = &history.item[ui.history_sel];
                         /* carrying on where it stopped: what the watched list is for */
-                        if (start_video(&ui, resolve, &pending, &conf, it->id, it->title, it->channel, it->position))
+                        if (start_video(&ui, resolve, &pending, &conf, it->id, it->title, it->channel,
+                                        it->duration_sec, it->position))
                             break;
                     }
                 } else if (ui.results.count > 0) {
                     const SearchResult *r = &ui.results.item[ui.results.sel];
                     const HistoryItem *seen = history_find(&history, r->id);
                     if (start_video(&ui, resolve, &pending, &conf, r->id, r->title, r->channel,
-                                    seen ? seen->position : 0))
+                                    r->duration_sec, seen ? seen->position : 0))
                         break;
                 }
                 ui_set_status(&ui, player ? "Could not play that." : "No player: build with libmpv.");
@@ -1253,7 +1257,8 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
         ui_open_settings(&ui, &shot_conf);
         ui.settings.sel = 1;                     /* Quality */
     } else if (playing) {
-        ui_set_playing(&ui, "Making a theme for BananaOS, start to finish", "Banana Dev");
+        ui_set_playing(&ui, "dQw4w9WgXcQ", "Making a theme for BananaOS, start to finish", "Banana Dev",
+                       12 * 60 + 34);
         ui_set_playing_state(&ui, 4 * 60 + 12, 12 * 60 + 34, false, false, 854, 480);
         ui_set_full_state(&ui, 70, 480, true, 0);
         ui.playing.buffering = false;
