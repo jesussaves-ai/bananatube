@@ -18,7 +18,11 @@ typedef struct {
     void               *egl_surface;      /* EGLSurface */
     int                 kms_fd;           /* the display device, for KMS */
     int                 egl_fd;           /* the device GBM/EGL took, when it is not kms_fd; -1 otherwise */
-    uint32_t            fb;               /* the framebuffer KMS scans out */
+    struct gbm_bo      *displayed;        /* the buffer the CRTC is on now */
+    uint32_t            displayed_fb;
+    struct gbm_bo      *previous;         /* held until the queued flip completes */
+    uint32_t            previous_fb;
+    int                 pending;          /* page flips in flight */
     uint32_t            crtc;
     uint32_t            conn;             /* attached on the first swap, which is what sets the mode */
     drmModeModeInfo     mode;

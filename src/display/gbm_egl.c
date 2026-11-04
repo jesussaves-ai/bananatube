@@ -336,27 +336,67 @@ void gbm_egl_swap(int fd, GbmEgl *g)
     bo = gbm_surface_lock_front_buffer(g->surface);
     if (!bo) return;
 
-    uint32_t fb = add_fb(fd, bo);
-    if (fb) {
-        if (g->fb) drmModeRmFB(fd, g->fb);
-        g->fb = fb;
-        if (!g->set_once) {
-            /* The first frame attaches the connector and sets the mode. Every frame after this only moves
-             * the CRTC's framebuffer, which is what a flip is. */
-            uint32_t conn = g->conn;
-            if (drmModeSetCrtc(fd, g->crtc, g->fb, 0, 0, &conn, 1, &g->mode))
-                log_line("egl: could not set the top panel's CRTC: %s", strerror(errno));
-            g->set_once = true;
-        } else {
-            drmModeSetCrtc(fd, g->crtc, g->fb, 0, 0, NULL, 0, NULL);
-        }
+    /* A flip is still in flight: keep the frame already on the panel, return this one to gbm. */
+    if (g->pending > 0) {
+        gbm_surface_release_buffer(g->surface, bo);
+        return;
     }
-    /* One buffer in flight: the previous one goes back so gbm can reuse it. */
-    gbm_surface_release_buffer(g->surface, bo);
+
+    /* The flip that used this buffer completed; it is no longer scanned. */
+    if (g->previous) {
+        if (g->previous_fb) drmModeRmFB(fd, g->previous_fb);
+        gbm_surface_release_buffer(g->surface, g->previous);
+        g->previous = NULL;
+        g->previous_fb = 0;
+    }
+
+    uint32_t fb = add_fb(fd, bo);
+    if (!fb) {
+        gbm_surface_release_buffer(g->surface, bo);
+        return;
+    }
+
+    if (!g->set_once) {
+        /* The first frame attaches the connector and sets the mode. Every frame after this is a page flip. */
+        uint32_t conn = g->conn;
+        if (drmModeSetCrtc(fd, g->crtc, fb, 0, 0, &conn, 1, &g->mode))
+            log_line("egl: could not set the top panel's CRTC: %s", strerror(errno));
+        g->set_once = true;
+        g->displayed = bo;
+        g->displayed_fb = fb;
+        return;
+    }
+
+    if (drmModePageFlip(fd, g->crtc, fb, DRM_MODE_PAGE_FLIP_EVENT, &g->pending) == 0) {
+        g->pending++;
+        g->previous = g->displayed;
+        g->previous_fb = g->displayed_fb;
+        g->displayed = bo;
+        g->displayed_fb = fb;
+    } else {
+        /* A driver that refuses the flip: a full modeset is the fallback, and the old frame is no longer in
+         * use once it returns. */
+        uint32_t conn = g->conn;
+        if (drmModeSetCrtc(fd, g->crtc, fb, 0, 0, &conn, 1, &g->mode)) {
+            log_line("egl: could not set the top panel's CRTC: %s", strerror(errno));
+            gbm_surface_release_buffer(g->surface, bo);
+            return;
+        }
+        if (g->displayed_fb) drmModeRmFB(fd, g->displayed_fb);
+        if (g->displayed) gbm_surface_release_buffer(g->surface, g->displayed);
+        g->displayed = bo;
+        g->displayed_fb = fb;
+    }
 }
 
 void gbm_egl_fini(GbmEgl *g)
 {
+    if (g->displayed_fb) drmModeRmFB(g->kms_fd, g->displayed_fb);
+    if (g->previous_fb) drmModeRmFB(g->kms_fd, g->previous_fb);
+    if (g->displayed) gbm_surface_release_buffer(g->surface, g->displayed);
+    if (g->previous) gbm_surface_release_buffer(g->surface, g->previous);
+    g->displayed = g->previous = NULL;
+    g->displayed_fb = g->previous_fb = 0;
     if (g->egl_display) {
         EGLDisplay dpy = (EGLDisplay)g->egl_display;
         eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
