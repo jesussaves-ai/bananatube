@@ -1,16 +1,13 @@
 /* resolver.c -- from a video id to something libmpv can open.
  *
- * The order is the plan's: the configured backend's own URLs first (no process, no cipher), then the other
- * backend, and only if both fail a single, tightly scoped yt-dlp run. yt-dlp is never used to search: it
- * would spawn a Python interpreter on every keystroke.
+ * The configured backend's own URLs first (no process, no cipher), then the other backend. Both are plain HTTP;
+ * nothing is spawned on the search or resolve path.
  */
 #include "net/backend.h"
 #include "net/http.h"
 #include "net/resolver.h"
 #include "util.h"
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <sys/socket.h>
 #include <string.h>
 
@@ -111,42 +108,9 @@ static int backend_order(const Conf *c, const Backend **out)
     }
 }
 
-/* ---- the last resort: one yt-dlp run, at the moment a video is picked ---------------------------------- */
-
-static bool ytdlp_available(void)
-{
-    return system("command -v yt-dlp >/dev/null 2>&1") == 0;
-}
-
-/* Runs yt-dlp -g once and takes the first URL it prints. The process exits (and its ~60 MB with it) before
- * libmpv is asked to open the URL. */
-static bool ytdlp_resolve(const Conf *c, const char *video_id, char *out, size_t cap)
-{
-    char cmd[512];
-    snprintf(cmd, sizeof cmd,
-        "yt-dlp -g --no-cache-dir --no-playlist --no-warnings "
-        "--cookies /data/banana/yt-cookies.txt "
-        "-f 'best[height<=%d][vcodec^=avc1][ext=mp4]/best[height<=%d][vcodec^=avc1]/best[height<=%d]' "
-        "'https://www.youtube.com/watch?v=%s' 2>/dev/null",
-        (int)c->quality, (int)c->quality, (int)c->quality, video_id);
-
-    log_line("resolver: falling back to yt-dlp (%d)", (int)c->quality);
-    FILE *p = popen(cmd, "r");
-    if (!p) return false;
-
-    out[0] = '\0';
-    if (fgets(out, (int)cap, p)) {
-        size_t n = strlen(out);
-        while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r')) out[--n] = '\0';
-    }
-    int st = pclose(p);
-    return out[0] && st == 0;
-}
-
 /* ---- the entry point ----------------------------------------------------------------------------------- */
 
-/* Asks the backends (and yt-dlp as a last resort) for the streams. Called twice at most, from
- * resolver_resolve() below. */
+/* Asks the backends for the streams. Called twice at most, from resolver_resolve() below. */
 static ResolveStatus resolve_once(const Conf *c, const char *video_id, StreamUrl *out)
 {
     memset(out, 0, sizeof *out);
@@ -187,14 +151,6 @@ static ResolveStatus resolve_once(const Conf *c, const char *video_id, StreamUrl
         log_line("resolver: %s %dx%d@%d %s%s (%d kbps audio)", order[b]->name,
                  out->width, out->height, out->fps, out->vcodec,
                  out->muxed ? " muxed" : " + separate audio", out->audio_kbps);
-        return RESOLVE_OK;
-    }
-
-    char url[URL_LEN];
-    if (ytdlp_available() && ytdlp_resolve(c, video_id, url, sizeof url)) {
-        str_copy(out->url, sizeof out->url, url);
-        out->muxed = true;
-        log_line("resolver: yt-dlp gave a stream");
         return RESOLVE_OK;
     }
 

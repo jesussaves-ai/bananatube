@@ -152,8 +152,8 @@ static void history_path(const char *conf_path, char *out, size_t cap)
 
 #ifdef BANANATUBE_MPV
 /* What is being resolved, and what to do when it comes back. The resolve itself runs on its own thread
- * (net/resolvejob.c) because it is the slowest thing the client does: a few HTTP calls and, when the backends
- * cannot answer, one yt-dlp run. On this thread that was a second or two of frozen panels. */
+ * (net/resolvejob.c) because it is the slowest thing the client does: a few HTTP calls. On this thread that
+ * was a second or two of frozen panels. */
 typedef struct {
     bool   active;
     char   id[VIDEO_ID_LEN];

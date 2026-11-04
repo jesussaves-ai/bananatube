@@ -4,8 +4,7 @@
  *   invidious.c   an Invidious/Piped instance: one GET for a search, one for a video
  *   innertube.c   YouTube's own /youtubei/v1 API, the way the Android VR and web clients do it
  *
- * Neither spawns anything. yt-dlp is the resolver's last resort and runs once, at the moment a video is
- * picked (net/resolver.c), never for a search.
+ * Neither spawns anything, for a search or for a stream.
  */
 #ifndef BANANATUBE_BACKEND_H
 #define BANANATUBE_BACKEND_H

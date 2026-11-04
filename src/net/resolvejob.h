@@ -1,9 +1,9 @@
 /* resolvejob.h -- resolving a video's stream URL, off the thread that draws.
  *
- * The resolve is the slowest thing the client does: a few HTTP calls, and yt-dlp's one run when the backends
- * cannot answer. On the main thread that is a second or two of frozen panels, which is how it was first
- * reported from the handheld ("it freezes when I try to start a video"). Same shape as the search job: a thread
- * that does the work, and the loop picks the answer up when it is ready.
+ * The resolve is the slowest thing the client does: a few HTTP calls. On the main thread that is a second or
+ * two of frozen panels, which is how it was first reported from the handheld ("it freezes when I try to start
+ * a video"). Same shape as the search job: a thread that does the work, and the loop picks the answer up when
+ * it is ready.
  *
  * The loop watches it by polling (resolve_job_busy), so nothing has to wake it: a resolve is a second, and the
  * main loop already wakes a few times a second for the spinner.

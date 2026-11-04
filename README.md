@@ -5,8 +5,8 @@ and RG DS Plus (Rockchip RK3568, 1 GB of RAM, two 640x480 panels).
 
 The video goes on the top panel, hardware-decoded. The search, the results and the transport controls are on the
 bottom one, drawn by the CPU straight into DRM buffers. There is **no browser, no WebView, no Electron, no Qt, no
-SDL** and — the point of the whole thing — **no `yt-dlp` on the search path**: searching is one HTTP request
-parsed with cJSON, because spawning a Python interpreter on a Cortex-A55 costs ~70 MB and 3–5 seconds.
+SDL** and — the point of the whole thing — **no `yt-dlp` at all**: searching and resolving are HTTP requests parsed
+with cJSON, because spawning a Python interpreter on a Cortex-A55 costs ~70 MB and 3–5 seconds.
 
 ## Status
 
@@ -153,7 +153,7 @@ src/
     http.c                libcurl, capped replies, cJSON helpers
     invidious.c           an Invidious/Piped instance (search, video, formats)
     innertube.c           YouTube's own /youtubei/v1 API (Android VR client: no cipher)
-    resolver.c            id -> playable URL, and the last-resort yt-dlp run
+    resolver.c            id -> playable URL over the HTTP backends
     thumbnail.c           a fixed-size LRU of small RGB565 textures, and a JPEG decoder
   player/                 (Phase 3) libmpv: one surface, the RAM caps, the OSD
   ui/                     (Phase 2) the search screen, the keyboard, the results grid, the settings screen
@@ -170,10 +170,9 @@ itself, and BananaDS drives the panels through `libdrm` with Panfrost for the GP
 EGL on GBM for the panel libmpv draws to, dumb buffers for the panel the CPU draws. A windowing library would
 add a dependency and an abstraction the rest of the system does not have, and buy nothing.
 
-**The backends are tried in order, and nothing is spawned to search.** An Invidious/Piped instance first (one GET,
-plain URLs, no cipher), YouTube's InnerTube API next (the Android VR client still answers without a
-`signatureCipher`), and only if both fail does a single, tightly scoped `yt-dlp -g` run — once per video, at the
-moment it is played, with its ~70 MB freed before libmpv opens the stream.
+**The backends are tried in order, and nothing is spawned.** An Invidious/Piped instance first (one GET, plain
+URLs, no cipher), YouTube's InnerTube API next (the Android VR client still answers without a
+`signatureCipher`). If both fail, the app says why and returns to the results; there is no Python fallback.
 
 ## License
 

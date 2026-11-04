@@ -131,15 +131,11 @@ Neither spawns anything. A search is ~1.5 MB of peak allocation and 200–400 ms
 **Tier 2 — a stream URL, once, when a video is picked.**
 
 1. The configured instance's `adaptiveFormats`/`formatStreams` (or Piped's `videoStreams`/`audioStreams`), or
-2. InnerTube's `streamingData`, or
-3. **a single `yt-dlp -g` run** — only here, only once per video, with its output captured and the process gone
-   (and its ~70 MB freed) before libmpv is asked to open the stream.
+2. InnerTube's `streamingData`.
 
 A reply whose only URLs come back as a `signatureCipher` is reported as `RESOLVE_NEEDS_CIPHER` rather than solved:
 shipping a JavaScript interpreter and chasing YouTube's weekly `n`-param rotation is not worth it on this device.
-
-Authentication, when it is added, is a `cookies.txt` in `banana/` handed to curl for the requests that need it —
-never parsed into memory and never logged.
+When neither backend has a playable URL, the app returns to the results with the error; nothing is spawned.
 
 ### The format rules (`select_video_format`)
 
@@ -278,8 +274,7 @@ different, and the plan's "audio with the lid shut" only means anything with the
 | **Idle, browsing** | **~30–35 MB** |
 
 The 1 GB machine runs the kernel and the caches in ~95 MB, and bananad reaped banana-ui before starting this, so
-there is no overlap with the menu's 23.5 MB. The `yt-dlp` fallback adds ~70 MB for the one second it runs, while
-the process is still at ~30 MB, and is gone before libmpv allocates.
+there is no overlap with the menu's 23.5 MB.
 
 The thumbnail cache is a fixed number of slots (`cache_size`, 12 by default) with an LRU: a grid keeps about a
 screenful resident, and the least recently drawn slot is the one reused. Pictures are decoded by libjpeg with

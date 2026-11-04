@@ -259,8 +259,8 @@ Recorded because none of it is visible from a desktop, and each one cost a build
    API: one answers, one rate-limits, one is behind a wall, one is down). All of them are tried in order now,
    with the working one first and the others as fallbacks.
 8. **YouTube bot-checks the player endpoint.** A search resolved (the `compactVideoRenderer` fix below), the
-   video did not: `innertube: Sign in to confirm you're not a bot`, then the yt-dlp last resort (which is not in
-   the image), then "Could not play this video". Measured against the live API, **1 of 8** videos resolved.
+   video did not: `innertube: Sign in to confirm you're not a bot`, then "Could not play this video". Measured
+   against the live API, **1 of 8** videos resolved.
    Every InnerTube reply carries a `visitorData`, the refusal carries a usable one, and sending it back is the
    whole difference: **8 of 8** resolved with it. `player_request()` in `net/innertube.c` keeps it, sends it,
    and asks once more with the value from a refusal. `--resolve` is how it was found and how it is checked.
