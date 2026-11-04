@@ -280,3 +280,35 @@ Recorded because none of it is visible from a desktop, and each one cost a build
 4. **The quality switch re-resolving**: it restarts the stream at the same position, which is honest but not
    seamless. If it is jarring, the alternative is to let mpv pick a different track without reopening — more
    work, and it does not work for a DASH video whose audio is a separate stream.
+
+## The revival checklist
+
+Each of these has a fix in this branch; the host tests cover the logic, and the handheld is the only place the
+display, audio and network paths are real.
+
+1. **A clean image shows the tile.** Flash the RG DS or RG DS Plus image, open Apps, and **YouTube** is there with
+   the `video.png` icon. **A** opens the client. A card's own `banana/systems.conf` still needs the same
+   `[bananatube]` section when it overrides the image's.
+2. **HOME is prompt.** Start a search, then press HOME while the spinner is up. With `instance =
+   https://10.255.255.1` in `banana/bananatube.conf`, repeat the search and press **A** on a result, then HOME.
+   The menu comes back within two seconds -- no per-instance curl timeout is allowed to hold DRM master.
+3. **The top panel flips.** Play a video and watch for tearing, flicker, or a frozen top panel. The log should
+   say `panels: top DSI-2 ... bottom DSI-...` and `player: libmpv ... ready`; after the first frame, the flip
+   path owns the panel. `dmesg | grep -iE 'rkvdec|v4l2|hantro'` should show the decoder being opened; a video
+   that plays but drops frames is a decoder question, not an EGL one.
+4. **Finish, stop, and switch.** Let a short video run to the end: the screen says "Finished.", and reopening it
+   from the watched list starts at the beginning. Stop one manually: the watched list keeps its position. Press
+   next/previous and **X** twice in quick succession: the new video stays up; an old `END_FILE` must not send the
+   app back with "Stopped.".
+5. **The watched list follows the video.** Start A from the grid, press next to B, stop, then open the watched
+   list. A and B have their own positions; A's is not attached to B. Start one from the watched list, pause, and
+   stop: that entry's position changes, not the grid's selection.
+6. **Touch.** Tap the keyboard, the transport buttons, and a settings row on the bottom panel: each does exactly
+   what it looks like. The top panel has no touchscreen, so the grid and results are D-pad only.
+7. **Sleep.** With Settings > Sleep & power > Closing the lid set to **Does nothing**, close the lid during
+   playback: sound continues, the panels go dark, and opening the lid restores the picture. Set the lid to
+   **Sleeps**, close it, and wake the handheld: the video should still be there (bananad's `SIGSTOP`/`SIGCONT`
+   path and the redraw on wake).
+8. **The palette.** Set Settings > Display & sound > Accent to each colour: the selection, the hint chips and the
+   player badge follow. A light theme uses the menu's light ground. A custom layout theme falls back to the
+   built-in dark/yellow base, as documented in `docs/ARCHITECTURE.md`.
