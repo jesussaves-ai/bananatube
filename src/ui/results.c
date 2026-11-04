@@ -68,6 +68,17 @@ bool results_move(Results *r, BananaKey key)
     return r->sel != before;
 }
 
+bool results_step(Results *r, int delta)
+{
+    if (!r || r->count <= 0) return false;
+    int want = r->sel + delta;
+    if (want < 0) want = 0;
+    if (want >= r->count) want = r->count - 1;
+    if (want == r->sel) return false;
+    r->sel = want;
+    return true;
+}
+
 void results_scroll_into_view(Results *r, int view_h)
 {
     r->view_h = view_h;

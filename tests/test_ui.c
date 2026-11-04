@@ -91,6 +91,17 @@ int main(void)
     results_set_thumb(&r, "not-here", 9);               /* no such video: nothing changes */
     check_int(r.tex_slot[3], 7);
 
+    /* previous/next step one result, not a grid row, and stop at the ends */
+    fill(&r, 6);
+    r.sel = 0;
+    check(!results_step(&r, -1));
+    check(results_step(&r, 1));
+    check_int(r.sel, 1);
+    r.sel = 5;
+    check(!results_step(&r, 1));
+    check(results_step(&r, -1));
+    check_int(r.sel, 4);
+
     /* ---- the keyboard ---- */
     Keyboard k;
     kb_reset(&k);

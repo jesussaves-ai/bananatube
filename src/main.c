@@ -15,6 +15,7 @@
 #include "display/gbm_egl.h"
 #include "font.h"
 #include "input/evdev.h"
+#include "net/http.h"
 #include "net/resolver.h"
 #include "net/resolvejob.h"
 #include "net/worker.h"
@@ -230,6 +231,17 @@ static void save_progress(AppState *ui, Player *player, History *hist, const cha
         history_path(conf_path, path, sizeof path);
         history_save(hist, path);
     }
+}
+
+/* Previous/next on the transport: one result back or forward, clamped at both ends. */
+static void play_neighbour(AppState *ui, Player *player, History *hist, const Conf *conf,
+                           const char *conf_path, ResolveJob *job, PendingPlay *pending, int delta)
+{
+    if (!ui->results.count) return;
+    save_progress(ui, player, hist, conf_path, true);
+    if (!results_step(&ui->results, delta)) return;
+    const SearchResult *r = &ui->results.item[ui->results.sel];
+    start_video(ui, job, pending, conf, r->id, r->title, r->channel, 0);
 }
 
 /* X while a video plays: 360p -> 480p -> 720p, and back. It re-resolves at the new size and carries on from
@@ -622,6 +634,7 @@ int main(int argc, char **argv)
     signal(SIGUSR1, on_usr1);
     signal(SIGTERM, on_term);
     signal(SIGINT, on_term);
+    http_init();
 
     const char *top_name = getenv("BANANA_TOP");
     if (!top_name || !*top_name) top_name = "DSI-2";
@@ -762,7 +775,7 @@ int main(int argc, char **argv)
     static BottomTex pics[THUMB_MAX_SLOTS];
     if (initial && *initial && search) search_job_begin(search, ui.query);
 
-    struct pollfd pfds[1 + INPUT_MAX_DEV];
+    struct pollfd pfds[2 + INPUT_MAX_DEV];
     KeyEvent keys[INPUT_EVENTS_MAX];
     TouchEvent touch = { 0 };
     DrawList dl_top, dl_bot;        /* ui_draw_top/_bot clear the list they are given */
@@ -949,15 +962,10 @@ int main(int argc, char **argv)
                 ui.dirty = true;
                 break;
             case UI_PREV_VIDEO:
+                play_neighbour(&ui, player, &history, &conf, conf_path, resolve, &pending, -1);
+                break;
             case UI_NEXT_VIDEO:
-                if (ui.results.count > 0) {
-                    bool next = (ui_key(&ui, BK_NONE) == UI_NONE);
-                    (void)next;
-                    if (ui.results.sel + 1 < ui.results.count && ui.playing.active) ui.results.sel++;
-                    const SearchResult *r = &ui.results.item[ui.results.sel];
-                    save_progress(&ui, player, &history, conf_path, true);
-                    start_video(&ui, resolve, &pending, &conf, r->id, r->title, r->channel, 0);
-                }
+                play_neighbour(&ui, player, &history, &conf, conf_path, resolve, &pending, +1);
                 break;
             case UI_SAVE_PROGRESS:
                 save_progress(&ui, player, &history, conf_path, true);
@@ -1059,6 +1067,8 @@ int main(int argc, char **argv)
 
         /* A resolve that finished while we were idle: open it (or say why not), before the frame is drawn. */
         take_resolved(&ui, player, &history, &conf, resolve, &pending);
+
+        if (ui.dirty) { dirty = true; ui.dirty = false; }
 
         if (dirty) {
             int64_t t0 = now_ms();

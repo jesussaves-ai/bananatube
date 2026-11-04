@@ -36,6 +36,8 @@ int  results_rows(const Results *r);
 int  results_visible_rows(int view_h);
 /* Moves the selection with the D-pad: across a row, up and down whole rows, without wrapping off the ends. */
 bool results_move(Results *r, BananaKey key);
+/* Moves one result forward/back (previous/next video), clamped at both ends. */
+bool results_step(Results *r, int delta);
 /* The row the selection is on, scrolled to be one of the visible ones. */
 void results_scroll_into_view(Results *r, int view_h);
 
