@@ -316,6 +316,7 @@ static int collect_piped(const cJSON *arr, Format *out, int max, int n, bool aud
 
 static ResolveStatus invidious_streams(const Conf *c, const char *id, Format *out, int max)
 {
+    ResolveStatus best = RESOLVE_NO_NETWORK;
     for (int i = 0; ; i++) {
         const char *base = invidious_instance(c, i);
         if (!base) break;
@@ -330,10 +331,10 @@ static ResolveStatus invidious_streams(const Conf *c, const char *id, Format *ou
         ResolveStatus st;
         invidious_parse_formats(r.data ? r.data : "", out, max, &st);
         http_response_free(&r);
-        if (st == RESOLVE_OK || st == RESOLVE_NEEDS_CIPHER || st == RESOLVE_NO_SUITABLE_FORMAT)
-            return st;
+        if (st == RESOLVE_OK) return st;
+        if (st == RESOLVE_NEEDS_CIPHER || st == RESOLVE_NO_SUITABLE_FORMAT) best = st;
     }
-    return RESOLVE_NO_NETWORK;
+    return best;
 }
 
 int invidious_parse_formats(const char *json, Format *out, int max, ResolveStatus *status)

@@ -12,6 +12,7 @@
 #include "net/http.h"
 #include "util.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,8 @@
  *
  * A search reply is the tidiest source and the usual one: the app searches, then plays. */
 static char g_visitor[768];
+/* The search and resolve threads both learn and send this; a torn copy is a failed request. */
+static pthread_mutex_t g_visitor_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void remember_visitor(const cJSON *root)
 {
@@ -41,10 +44,13 @@ static void remember_visitor(const cJSON *root)
     char v[768] = "";
     if (!rc) return;
     json_str(rc, "visitorData", v, sizeof v);
-    if (v[0] && strcmp(v, g_visitor) != 0) {
+    if (!v[0]) return;
+    pthread_mutex_lock(&g_visitor_lock);
+    if (strcmp(v, g_visitor) != 0) {
         str_copy(g_visitor, sizeof g_visitor, v);
         log_line("innertube: visitorData kept (%u chars)", (unsigned)strlen(g_visitor));
     }
+    pthread_mutex_unlock(&g_visitor_lock);
 }
 
 static char *player_request(const Conf *c, const char *id);   /* defined below: both detail and streams use it */
@@ -58,6 +64,7 @@ static const char *innertube_key(void)
 /* The client block both calls send. */
 static void client_context(char *out, size_t cap)
 {
+    pthread_mutex_lock(&g_visitor_lock);
     snprintf(out, cap,
         "\"context\":{\"client\":{"
         "\"clientName\":\"ANDROID_VR\","
@@ -71,6 +78,7 @@ static void client_context(char *out, size_t cap)
         "\"visitorData\":\"%s\","
         "\"userAgent\":\"com.google.android.apps.youtube.vr.oculus/1.64.0 (Linux; U; Android 12; GB) gzip\""
         "}}", g_visitor);
+    pthread_mutex_unlock(&g_visitor_lock);
 }
 
 /* A YouTube text field: a plain string (videoDetails.title), {simpleText}, or {runs:[{text}]} -- the

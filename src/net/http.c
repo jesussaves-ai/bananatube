@@ -130,8 +130,9 @@ void http_fini(void)
     curl_global_cleanup();
 }
 
-/* The address family requests are made from, and the switch the resolver flips. */
-static int g_ip_family = AF_UNSPEC;
+/* The address family requests are made from. Per-thread: the resolver's IPv4 choice must not change the
+ * search or thumbnail threads. */
+static _Thread_local int g_ip_family = AF_UNSPEC;
 
 static long ip_resolve(void)
 {
