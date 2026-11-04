@@ -295,12 +295,10 @@ static void log_memory(const char *when)
 /* A setting changed in the app's own screen (VIEW_SETTINGS): write bananatube.conf, then apply the parts that
  * take effect at once. The rest -- backend, timeout, instance, decoder, quality -- is read when the next search
  * or video starts, so nothing has to be torn down here. */
-static void apply_setting(const Conf *conf, const char *conf_path, History *hist, ThumbCache *cache,
-                          const char *key)
+static void apply_setting(const Conf *conf, const char *conf_path, History *hist, const char *key)
 {
     if (!conf_save(conf, conf_path)) log_line("could not write %s", conf_path);
     if (hist && strcmp(key, "history_size") == 0) history_set_cap(hist, conf->history_size);
-    if (cache && strcmp(key, "cache_size") == 0) thumb_init(cache, conf->cache_size);
     log_line("setting %s: backend=%s quality=%s lid_audio=%s history=%d cache=%d timeout=%d hwdec=%s",
              key, conf_backend_name(conf->backend), conf_quality_name(conf->quality),
              conf->audio_only_on_lid ? "yes" : "no", conf->history_size, conf->cache_size,
@@ -616,7 +614,7 @@ static int cli_keys(int argc, char **argv)
         } else if (a == UI_OPEN_SETTINGS) {
             ui_open_settings(&ui, &conf);
         } else if (a == UI_SETTINGS_SAVE) {
-            apply_setting(&conf, conf_path, NULL, NULL, ui.settings.changed_key);
+            apply_setting(&conf, conf_path, NULL, ui.settings.changed_key);
         } else if (a == UI_QUIT) {
             printf("        quit\n");
             break;
@@ -982,7 +980,7 @@ int main(int argc, char **argv)
                 ui_open_settings(&ui, &conf);
                 break;
             case UI_SETTINGS_SAVE:
-                apply_setting(&conf, conf_path, &history, &cache, ui.settings.changed_key);
+                apply_setting(&conf, conf_path, &history, ui.settings.changed_key);
                 break;
             case UI_NONE:
             default:

@@ -45,7 +45,7 @@ static const Row ROWS[] = {
       { "10", "25", "50", "100" }, { "10", "25", "50", "100" }, 4, false },
     { "cache_size", "Picture cache",
       "How many result pictures are held in memory: 12 is about 1.5 MB. More pictures scroll more smoothly; "
-      "fewer leave more RAM to the video decoder.",
+      "fewer leave more RAM to the video decoder. Takes effect the next time BananaTube starts.",
       { "6", "12", "18", "24" }, { "6", "12", "18", "24" }, 4, false },
     { "search_timeout_ms", "Search timeout",
       "How long a backend is given to answer before the next one is tried. The handheld's Wi-Fi is slow to "

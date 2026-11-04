@@ -166,7 +166,21 @@ bool thumb_decode(const uint8_t *data, size_t n, uint8_t **out, int *w, int *h, 
         JSAMPROW rows[1] = { row };
         if (jpeg_read_scanlines(&cinfo, rows, 1) == 0) break;
     }
-    jpeg_finish_decompress(&cinfo);
+    if (cinfo.output_scanline < cinfo.output_height) {
+        jpeg_destroy_decompress(&cinfo);
+        free(rgb);
+        return false;
+    }
+    if (!jpeg_finish_decompress(&cinfo)) {
+        jpeg_destroy_decompress(&cinfo);
+        free(rgb);
+        return false;
+    }
+    if (jerr.pub.num_warnings > 0) {          /* libjpeg pads a short file with rows of grey */
+        jpeg_destroy_decompress(&cinfo);
+        free(rgb);
+        return false;
+    }
     jpeg_destroy_decompress(&cinfo);
 
     buf = malloc((size_t)iw * (size_t)ih * 2);

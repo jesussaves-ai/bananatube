@@ -102,6 +102,19 @@ int main(void)
     check(w >= THUMB_DRAW_W && h >= THUMB_DRAW_H);
     free(pixels);
 
+    /* a download cut short is refused, not decoded from uninitialized pixels */
+    size_t cut_n = big_n / 4;
+    uint8_t *cut = malloc(cut_n);
+    check(cut != NULL);
+    if (cut) {
+        memcpy(cut, big, cut_n);
+        pixels = (uint8_t *)0x1;
+        w = h = 7;
+        check(!thumb_decode(cut, cut_n, &pixels, &w, &h, THUMB_DRAW_W, THUMB_DRAW_H));
+        check(pixels == NULL);
+        free(cut);
+    }
+
     /* rubbish is refused, not crashed on: this is a truncated download or a 404 page */
     pixels = (uint8_t *)0x1;
     w = h = 7;
