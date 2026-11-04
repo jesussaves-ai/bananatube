@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include <cjson/cJSON.h>
 
@@ -21,6 +22,10 @@ typedef struct {
 
 void http_init(void);            /* curl_global_init, once */
 void http_fini(void);
+
+/* An absolute monotonic deadline for this thread (0 = none). Every transfer uses the smaller of its own
+ * timeout and the time left, so one search or resolve cannot outlive its budget. */
+void http_set_deadline_ms(int64_t deadline_ms);
 
 bool http_get(const char *url, int timeout_ms, HttpResponse *out);
 

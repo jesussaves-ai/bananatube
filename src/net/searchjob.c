@@ -4,6 +4,7 @@
  * mid-keystroke and the spinner mid-turn; done here, the frame keeps coming and the UI shows a spinner until
  * the answer lands in the result slot below.
  */
+#include "net/http.h"
 #include "net/worker.h"
 #include "util.h"
 
@@ -11,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define SEARCHQ_MAX SEARCH_RESULTS_MAX
 #define QUERY_MAX_LOCAL 128
@@ -46,7 +48,9 @@ static void *search_main(void *arg)
         int n = 0;
         char message[160] = "";
 
+        http_set_deadline_ms(now_ms() + 10000);
         n = backend_search_auto(&conf, query, found, SEARCHQ_MAX, message, sizeof message);
+        http_set_deadline_ms(0);
         if (n < 0) n = 0;                  /* the thread reports a count, and the message says the rest */
 
         pthread_mutex_lock(&j->lock);
@@ -73,6 +77,17 @@ SearchJob *search_job_start(const Conf *c)
     return j;
 }
 
+/* Wait for the worker, but never longer than the caller can afford. */
+static bool join_within(pthread_t t, long ms)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_nsec += ms * 1000000L;
+    ts.tv_sec += ts.tv_nsec / 1000000000L;
+    ts.tv_nsec %= 1000000000L;
+    return pthread_timedjoin_np(t, NULL, &ts) == 0;
+}
+
 void search_job_stop(SearchJob *j)
 {
     if (!j) return;
@@ -80,7 +95,12 @@ void search_job_stop(SearchJob *j)
     j->quit = true;
     pthread_cond_broadcast(&j->wake);
     pthread_mutex_unlock(&j->lock);
-    pthread_join(j->thread, NULL);
+    if (!join_within(j->thread, 250)) {
+        /* shortcut: a worker still inside a network timeout is detached and its job is leaked until the
+         * process exits; upgrade to a cancellable transfer if this ever becomes common. */
+        pthread_detach(j->thread);
+        return;
+    }
     pthread_mutex_destroy(&j->lock);
     pthread_cond_destroy(&j->wake);
     free(j);

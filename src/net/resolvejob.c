@@ -1,4 +1,5 @@
 /* resolvejob.c */
+#include "net/http.h"
 #include "net/resolvejob.h"
 #include "net/resolver.h"
 #include "util.h"
@@ -6,6 +7,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 struct ResolveJob {
     pthread_t       thread;
@@ -38,7 +40,9 @@ static void *resolve_main(void *arg)
         pthread_mutex_unlock(&j->lock);
 
         StreamUrl s;
+        http_set_deadline_ms(now_ms() + 15000);
         ResolveStatus st = resolver_resolve(&conf, id, &s);
+        http_set_deadline_ms(0);
 
         pthread_mutex_lock(&j->lock);
         j->out = s;
@@ -62,6 +66,17 @@ ResolveJob *resolve_job_start(void)
     return j;
 }
 
+/* Wait for the worker, but never longer than the caller can afford. */
+static bool join_within(pthread_t t, long ms)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_nsec += ms * 1000000L;
+    ts.tv_sec += ts.tv_nsec / 1000000000L;
+    ts.tv_nsec %= 1000000000L;
+    return pthread_timedjoin_np(t, NULL, &ts) == 0;
+}
+
 void resolve_job_stop(ResolveJob *j)
 {
     if (!j) return;
@@ -69,7 +84,12 @@ void resolve_job_stop(ResolveJob *j)
     j->quit = true;
     pthread_cond_signal(&j->wake);
     pthread_mutex_unlock(&j->lock);
-    pthread_join(j->thread, NULL);
+    if (!join_within(j->thread, 250)) {
+        /* shortcut: a worker still inside a network timeout is detached and its job is leaked until the
+         * process exits; upgrade to a cancellable transfer if this ever becomes common. */
+        pthread_detach(j->thread);
+        return;
+    }
     pthread_mutex_destroy(&j->lock);
     pthread_cond_destroy(&j->wake);
     free(j);

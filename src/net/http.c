@@ -14,6 +14,14 @@ typedef struct {
     size_t limit;
 } Sink;
 
+/* Per-thread: a search thread and a resolve thread have different budgets. */
+static _Thread_local int64_t g_deadline_ms;
+
+void http_set_deadline_ms(int64_t deadline_ms)
+{
+    g_deadline_ms = deadline_ms;
+}
+
 static bool transfer(const char *url, const char *body, const char *content_type, int timeout_ms,
                      const char *extra_hdr, HttpResponse *out);
 static long ip_resolve(void);
@@ -43,6 +51,12 @@ static bool transfer(const char *url, const char *body, const char *content_type
                      const char *extra_hdr, HttpResponse *out)
 {
     memset(out, 0, sizeof *out);
+
+    if (g_deadline_ms) {
+        int64_t left = g_deadline_ms - now_ms();
+        if (left <= 0) { str_copy(out->error, sizeof out->error, "timed out"); return false; }
+        if (left < timeout_ms) timeout_ms = (int)left;
+    }
 
     CURL *c = curl_easy_init();
     if (!c) { str_copy(out->error, sizeof out->error, "curl_easy_init failed"); return false; }
@@ -86,7 +100,10 @@ static bool transfer(const char *url, const char *body, const char *content_type
         str_copy(out->peer_ip, sizeof out->peer_ip, ip);
 
     if (rc != CURLE_OK) {
-        snprintf(out->error, sizeof out->error, "%s (curl %d)", curl_easy_strerror(rc), (int)rc);
+        if (rc == CURLE_OPERATION_TIMEDOUT)
+            str_copy(out->error, sizeof out->error, "timed out");
+        else
+            snprintf(out->error, sizeof out->error, "%s (curl %d)", curl_easy_strerror(rc), (int)rc);
         free(sink.data);
         sink.data = NULL;
     } else if (sink.overflow) {

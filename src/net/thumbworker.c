@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #define QUEUE_MAX 64
@@ -142,6 +143,17 @@ ThumbWorker *thumb_worker_start(int threads)
     return w;
 }
 
+/* Wait for one worker, but never longer than the caller can afford. */
+static bool join_within(pthread_t t, long ms)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_nsec += ms * 1000000L;
+    ts.tv_sec += ts.tv_nsec / 1000000000L;
+    ts.tv_nsec %= 1000000000L;
+    return pthread_timedjoin_np(t, NULL, &ts) == 0;
+}
+
 void thumb_worker_stop(ThumbWorker *w)
 {
     if (!w) return;
@@ -149,7 +161,15 @@ void thumb_worker_stop(ThumbWorker *w)
     w->quit = true;
     pthread_cond_broadcast(&w->wake);
     pthread_mutex_unlock(&w->lock);
-    for (int i = 0; i < w->nthreads; i++) pthread_join(w->thread[i], NULL);
+    bool detached = false;
+    for (int i = 0; i < w->nthreads; i++) {
+        if (join_within(w->thread[i], 250)) continue;
+        /* shortcut: a worker still inside a fetch is detached and leaked until the process exits; upgrade
+         * to a cancellable transfer if this ever becomes common. */
+        pthread_detach(w->thread[i]);
+        detached = true;
+    }
+    if (detached) return;
     for (int i = 0; i < w->dn; i++) free(w->done[i].pixels);
     pthread_mutex_destroy(&w->lock);
     pthread_cond_destroy(&w->wake);
