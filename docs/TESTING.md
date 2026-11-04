@@ -85,7 +85,7 @@ the screen with the touchscreen.
 |---|---|
 | **The decoder** | `hwdec = v4l2m2m-copy` is what the launcher writes, and the only hardware decoder this image has: BananaOS's ffmpeg is built with the kernel's h264/hevc/vp9 v4l2m2m and with no Rockchip MPP, so **`rkmpp-copy` would fail to start — do not set it**. Play a 480p and a 720p video and watch the overlay's drop count. Non-zero means set `hwdec = no` in `banana/bananatube.conf` and compare (software decode, but no copy-back overhead), and tell me which was better. |
 | **The overlay's orientation** | The bar should be at the bottom of the video, the right way up. If it is upside-down or at the top, that is the `FLIP_Y` flag against the blitter's flip — tell me which and it is a one-line fix. |
-| Hardware decode at all? | The log has mpv's own line; `dmesg \| grep -i -E 'rkvdec\|v4l2\|mpp'` should show the decoder being opened. If mpv falls back to software the drop count will be loud about it. |
+| Hardware decode at all? | The log has mpv's own line. `dmesg \| grep -i -E 'hantro\|rkvdec\|v4l2'` must show a node binding — on the RG DS that is hantro's `rockchip,rk3568-vpu`, so **H.264** is the format to check (the resolver prefers it). Play a 480p video and an **X**-switched 720p one; if mpv reports software decoding or the drop count is loud, the media gate failed even though the image built. |
 | The picture | Full screen, letterboxed (16:9 in a 4:3 panel), no tearing, no green or smeared frames. |
 | Sound | In sync with the picture. Volume keys still change the mixer (bananad owns those); the on-screen volume is mpv's own on top. |
 | The badge | It should read the size the resolver picked (480p by default, from `quality`), and match what mpv is decoding. |
@@ -308,7 +308,9 @@ display, audio and network paths are real.
 7. **Sleep.** With Settings > Sleep & power > Closing the lid set to **Does nothing**, close the lid during
    playback: sound continues, the panels go dark, and opening the lid restores the picture. Set the lid to
    **Sleeps**, close it, and wake the handheld: the video should still be there (bananad's `SIGSTOP`/`SIGCONT`
-   path and the redraw on wake).
+   path and the redraw on wake). If the top panel comes back frozen while the sound continues, the log should
+   say `the top panel's page flip never completed; re-issuing` within a quarter of a second -- that is the
+   lost-flip recovery doing its job, and if it does not appear the flip event was simply late.
 8. **The palette.** Set Settings > Display & sound > Accent to each colour: the selection, the hint chips and the
    player badge follow. A light theme uses the menu's light ground. A custom layout theme falls back to the
    built-in dark/yellow base, as documented in `docs/ARCHITECTURE.md`.

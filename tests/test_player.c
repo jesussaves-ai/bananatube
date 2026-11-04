@@ -8,6 +8,7 @@
 #include "test.h"
 
 #include <mpv/client.h>
+#include <unistd.h>
 
 static bool mpv_str(mpv_handle *m, const char *name, char *out, size_t cap)
 {
@@ -43,6 +44,24 @@ static void check_flag_prop(mpv_handle *m, const char *name, bool want)
 /* The player's mpv handle is private; the test drives its own with the same options through the public API,
  * which is what player_create sets up. To reach the real one, player.h exposes the handle for exactly this. */
 mpv_handle *player_mpv_handle(const Player *p);
+
+/* A silent WAV: the regression below needs a file mpv can actually load, and it must not need a GPU, a network
+ * or a sound card. Little-endian headers are fine: this test only runs on the build host. */
+static bool write_wav(const char *path, int seconds)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f) return false;
+    uint32_t rate = 8000, n = rate * (uint32_t)seconds, v;
+    uint16_t one = 1, bits = 8, align = 1;
+    fwrite("RIFF", 1, 4, f);   v = 36 + n;  fwrite(&v, 1, 4, f);
+    fwrite("WAVEfmt ", 1, 8, f); v = 16;    fwrite(&v, 1, 4, f);
+    fwrite(&one, 1, 2, f);     fwrite(&one, 1, 2, f);
+    fwrite(&rate, 1, 4, f);    fwrite(&rate, 1, 4, f);
+    fwrite(&align, 1, 2, f);   fwrite(&bits, 1, 2, f);
+    fwrite("data", 1, 4, f);   fwrite(&n, 1, 4, f);
+    for (uint32_t i = 0; i < n; i++) fputc(128, f);
+    return fclose(f) == 0;
+}
 
 int main(void)
 {
@@ -117,6 +136,39 @@ int main(void)
     player_close(p);
     check(!player_active(p));
     check(!player_eof(p));
+
+    /* ---- a second load must not be ended by the first file's stop ----
+     * mpv hands over the stopped file's END_FILE *after* the next loadfile (reason=STOP, the old entry's id).
+     * Treating it as the new file's end marked next/previous and the quality key as "Stopped." while the new
+     * stream's sound carried on. The events here are the real libmpv ones; only the files are local. */
+    const char *wa = "/tmp/bananatube-test-a.wav", *wb = "/tmp/bananatube-test-b.wav";
+    check(write_wav(wa, 10) && write_wav(wb, 10));
+    /* No sound card and no GPU on the build host: the files must still load and play. */
+    mpv_set_property_string(m, "ao", "null");
+    mpv_set_property_string(m, "vo", "null");
+
+    StreamUrl w;
+    memset(&w, 0, sizeof w);
+    str_copy(w.url, sizeof w.url, wa);
+    str_copy(w.vcodec, sizeof w.vcodec, "pcm_s16le");
+    w.muxed = true;
+    check(player_open(p, &w));
+    for (int i = 0; i < 3000 && player_duration(p) <= 0.0; i++) { player_tick(p); usleep(1000); }
+    check(player_duration(p) > 0.0);          /* A really loaded, so the stop below is a real stop */
+
+    str_copy(w.url, sizeof w.url, wb);
+    check(player_open(p, &w));
+    /* One event at a time, for 300 ms: the stale END_FILE lands within a frame or two of the loadfile, and a
+     * transient "stopped" must not be missed. B is ten seconds long, so it cannot end in this window. */
+    for (int i = 0; i < 300; i++) {
+        player_tick(p);
+        if (!player_active(p)) { t_fail++; printf("  FAIL: the stopped file's END_FILE ended the new one\n"); break; }
+        usleep(1000);
+    }
+    check(player_active(p));
+    check(!player_eof(p));
+    check(player_duration(p) > 0.0);          /* B is the file loaded now */
+    player_close(p);
 
     player_destroy(p);
     test_done();

@@ -27,6 +27,7 @@ struct Player {
     double  position, duration;
     int     width, height;
     int     dropped;
+    int64_t entry;                  /* the playlist entry we started: an older file's END_FILE is not ours */
     char    error[160];
 };
 
@@ -231,6 +232,7 @@ void player_close(Player *p)
     const char *cmd[] = { "stop", NULL };
     mpv_command(p->mpv, cmd);
     drain_events(p);
+    p->entry = 0;
     p->active = false;
     p->eof = false;
     p->buffering = false;
@@ -247,8 +249,17 @@ void player_tick(Player *p)
         mpv_event *e = mpv_wait_event(p->mpv, 0);
         if (!e || e->event_id == MPV_EVENT_NONE) break;
         switch (e->event_id) {
+        case MPV_EVENT_START_FILE: {
+            mpv_event_start_file *f = e->data;
+            p->entry = f ? f->playlist_entry_id : 0;
+            break;
+        }
         case MPV_EVENT_END_FILE: {
             mpv_event_end_file *f = e->data;
+            /* Only the file we started may end this session. mpv hands over the stopped file's END_FILE
+             * *after* the next loadfile, so treating any END_FILE as ours marked the new video stopped: the
+             * sound carried on under "Stopped." and the transport keys no longer reached it. */
+            if (!f || p->entry == 0 || f->playlist_entry_id != p->entry) break;
             p->active = false;
             p->eof = f && player_end_is_eof(f->reason);
             if (f && f->reason == MPV_END_FILE_REASON_ERROR) {

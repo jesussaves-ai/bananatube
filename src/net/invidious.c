@@ -317,6 +317,7 @@ static int collect_piped(const cJSON *arr, Format *out, int max, int n, bool aud
 static ResolveStatus invidious_streams(const Conf *c, const char *id, Format *out, int max)
 {
     ResolveStatus best = RESOLVE_NO_NETWORK;
+    bool reached = false;
     for (int i = 0; ; i++) {
         const char *base = invidious_instance(c, i);
         if (!base) break;
@@ -328,12 +329,16 @@ static ResolveStatus invidious_streams(const Conf *c, const char *id, Format *ou
             http_response_free(&r);
             continue;
         }
+        reached = true;
         ResolveStatus st;
         invidious_parse_formats(r.data ? r.data : "", out, max, &st);
         http_response_free(&r);
         if (st == RESOLVE_OK) return st;
         if (st == RESOLVE_NEEDS_CIPHER || st == RESOLVE_NO_SUITABLE_FORMAT) best = st;
     }
+    /* An instance answered and none of them was usable: that is not "no Wi-Fi", and saying so sent people to
+     * the network settings for nothing. */
+    if (reached && best == RESOLVE_NO_NETWORK) best = RESOLVE_INSTANCE_FAILED;
     return best;
 }
 

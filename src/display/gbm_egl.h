@@ -23,6 +23,7 @@ typedef struct {
     struct gbm_bo      *previous;         /* held until the queued flip completes */
     uint32_t            previous_fb;
     int                 pending;          /* page flips in flight */
+    int64_t             flip_ms;          /* when the pending flip was issued: the lost-event watchdog */
     uint32_t            crtc;
     uint32_t            conn;             /* attached on the first swap, which is what sets the mode */
     drmModeModeInfo     mode;

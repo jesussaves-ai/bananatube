@@ -227,7 +227,11 @@ static void save_progress(AppState *ui, Player *player, History *hist, const cha
 {
     if (!player || !ui->playing.active || !hist) return;
     if (!ui->playing.id[0]) return;
-    history_progress(hist, ui->playing.id, player_position(player));
+    /* Nothing has played yet: a stop in the first frame after an open would otherwise wipe the resume point
+     * the video was started from. A finished video clears its position explicitly, further down the loop. */
+    double at = player_position(player);
+    if (at <= 0.0) return;
+    history_progress(hist, ui->playing.id, at);
     if (write_file) {
         char path[512];
         history_path(conf_path, path, sizeof path);
@@ -241,9 +245,15 @@ static void play_neighbour(AppState *ui, Player *player, History *hist, const Co
 {
     if (!ui->results.count) return;
     save_progress(ui, player, hist, conf_path, true);
-    if (!results_step(&ui->results, delta)) return;
-    const SearchResult *r = &ui->results.item[ui->results.sel];
-    start_video(ui, job, pending, conf, r->id, r->title, r->channel, r->duration_sec, 0);
+    /* The selection moves only when the new video actually starts: a busy resolve would otherwise leave the
+     * highlight on a video that is not playing, and the next press resolving the wrong neighbour. */
+    int want = ui->results.sel + delta;
+    if (want < 0) want = 0;
+    if (want >= ui->results.count) want = ui->results.count - 1;
+    if (want == ui->results.sel) return;
+    const SearchResult *r = &ui->results.item[want];
+    if (start_video(ui, job, pending, conf, r->id, r->title, r->channel, r->duration_sec, 0))
+        ui->results.sel = want;
 }
 
 /* X while a video plays: 360p -> 480p -> 720p, and back. It re-resolves at the new size and carries on from
@@ -251,22 +261,29 @@ static void play_neighbour(AppState *ui, Player *player, History *hist, const Co
 static bool switch_quality(AppState *ui, Conf *conf, Player *player, History *hist, const char *conf_path,
                            ResolveJob *job, PendingPlay *pending)
 {
+    Quality was = conf->quality;
     switch ((int)conf->quality) {
     case QUALITY_360: conf->quality = QUALITY_480; break;
     case QUALITY_480: conf->quality = QUALITY_720; break;
     default:          conf->quality = QUALITY_360; break;
     }
-    conf_save(conf, conf_path);
 
     if (!player || !ui->playing.active || !ui->playing.id[0]) {
+        conf_save(conf, conf_path);
         ui->playing.quality = (int)conf->quality;
         ui->dirty = true;
         return true;
     }
     double at = player_position(player);
     save_progress(ui, player, hist, conf_path, true);
-    return start_video(ui, job, pending, conf, ui->playing.id, ui->playing.title, ui->playing.channel,
-                       ui->playing.duration_sec, at);
+    if (!start_video(ui, job, pending, conf, ui->playing.id, ui->playing.title, ui->playing.channel,
+                     ui->playing.duration_sec, at)) {
+        /* The old stream is still the one playing: the menu must not claim a quality it did not get. */
+        conf->quality = was;
+        return false;
+    }
+    conf_save(conf, conf_path);
+    return true;
 }
 #endif
 
@@ -947,6 +964,7 @@ int main(int argc, char **argv)
             case UI_STOP:
                 save_progress(&ui, player, &history, conf_path, true);
                 if (player) player_close(player);
+                pending.active = false;          /* a resolve still on its way is no longer wanted */
                 ui_set_playing_stopped(&ui, "");
                 break;
             case UI_PAUSE:

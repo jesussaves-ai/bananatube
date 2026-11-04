@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <gbm.h>
@@ -336,10 +337,17 @@ void gbm_egl_swap(int fd, GbmEgl *g)
     bo = gbm_surface_lock_front_buffer(g->surface);
     if (!bo) return;
 
-    /* A flip is still in flight: keep the frame already on the panel, return this one to gbm. */
+    /* A flip is still in flight: keep the frame already on the panel, return this one to gbm. The completion
+     * event arrives on the KMS fd; if it never does (a flip orphaned by a suspend, a driver that dropped it)
+     * this would freeze the top panel for the rest of the session, so a flip older than 250 ms -- fifteen
+     * frames at 60 Hz -- counts as lost and the next one is issued from what is on the panel. */
     if (g->pending > 0) {
-        gbm_surface_release_buffer(g->surface, bo);
-        return;
+        if (now_ms() - g->flip_ms < 250) {
+            gbm_surface_release_buffer(g->surface, bo);
+            return;
+        }
+        log_line("egl: the top panel's page flip never completed; re-issuing");
+        g->pending = 0;
     }
 
     /* The flip that used this buffer completed; it is no longer scanned. */
@@ -359,8 +367,12 @@ void gbm_egl_swap(int fd, GbmEgl *g)
     if (!g->set_once) {
         /* The first frame attaches the connector and sets the mode. Every frame after this is a page flip. */
         uint32_t conn = g->conn;
-        if (drmModeSetCrtc(fd, g->crtc, fb, 0, 0, &conn, 1, &g->mode))
+        if (drmModeSetCrtc(fd, g->crtc, fb, 0, 0, &conn, 1, &g->mode)) {
             log_line("egl: could not set the top panel's CRTC: %s", strerror(errno));
+            drmModeRmFB(fd, fb);
+            gbm_surface_release_buffer(g->surface, bo);
+            return;                 /* set_once stays false: the next swap tries the first frame again */
+        }
         g->set_once = true;
         g->displayed = bo;
         g->displayed_fb = fb;
@@ -369,6 +381,7 @@ void gbm_egl_swap(int fd, GbmEgl *g)
 
     if (drmModePageFlip(fd, g->crtc, fb, DRM_MODE_PAGE_FLIP_EVENT, &g->pending) == 0) {
         g->pending++;
+        g->flip_ms = now_ms();
         g->previous = g->displayed;
         g->previous_fb = g->displayed_fb;
         g->displayed = bo;
