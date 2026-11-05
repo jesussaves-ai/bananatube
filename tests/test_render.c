@@ -5,6 +5,7 @@
  * its neighbour on the other. That was a real bug: the placeholder branch of an image passed its box
  * unscaled. This test is what catches it next time. */
 #include "display/render.h"
+#include "display/renderstats.h"
 #include "test.h"
 
 #include <stdlib.h>
@@ -66,6 +67,26 @@ int main(void)
     check_int(at(c, w, 60, 45), 0xffffffff);
     check_int(at(c, w, 360, 45), 0xff000000);           /* the placeholder was outside the clip */
     check_int(at(c, w, 60, 190), 0xff000000);           /* and so was the picture */
+
+    /* ---- an op that cannot land in the rectangle being repainted is not drawn ----
+     * A selection move repaints a small rectangle; the frame's other 60-odd ops are still walked, and their
+     * text is still measured, for every one of them. render_stats counts what was really drawn. */
+    DrawList outside;
+    dl_reset(&outside);
+    for (int i = 0; i < 20; i++) dl_rect(&outside, 500, 10 + i, 20, 20, 0xffffffff);
+    dl_rect(&outside, 5, 5, 10, 10, 0xffffffff);        /* the one inside the rectangle */
+    render_stats_reset();
+    render_ops(c, w, h, NULL, &outside, tex, 1, 1.0f, 0, 0, 32, 32);
+    long calls[3];
+    double ms[3];
+    render_stats(ms, calls);
+    check_int(calls[0], 1);                             /* the twenty outside it were not drawn */
+
+    /* and at 1.6, where the rectangle is in panel pixels and the ops are in screen units */
+    render_stats_reset();
+    render_ops(c, 1024, 768, NULL, &outside, tex, 1, 1.6f, 0, 0, 52, 52);
+    render_stats(ms, calls);
+    check_int(calls[0], 1);
 
     free(c);
     test_done();

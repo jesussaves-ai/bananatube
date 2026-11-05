@@ -196,8 +196,18 @@ void render_ops(uint32_t *canvas, int w, int h, FontCtx *fnt, const DrawList *dl
     if (!canvas || !dl) return;
     if (scale <= 0) scale = 1.0f;
     RenderCanvas rc = { canvas, w, h, fnt };
-    for (int k = 0; k < dl->n; k++)
-        draw_op(&rc, &dl->op[k], fnt, tex, tex_n, cx, cy, cw, ch, scale);
+    for (int k = 0; k < dl->n; k++) {
+        const DrawOp *op = &dl->op[k];
+        /* Nothing this op draws can land in the rectangle being repainted, so none of it is drawn: its text
+         * is not measured and its picture is not walked. The op's own box is the bound that matters -- that
+         * is the box dl_diff hands to damage_add, so if an op drew outside it the damage would already leave
+         * the stale pixels behind. Scaled the same way draw_op scales it, because the rectangle is in panel
+         * pixels and the op is in the UI's 640x480 units. */
+        int bx = render_scale(op->x, scale), by = render_scale(op->y, scale);
+        int bx2 = render_scale(op->x + op->w, scale), by2 = render_scale(op->y + op->h, scale);
+        if (bx2 <= cx || by2 <= cy || bx >= cx + cw || by >= cy + ch) continue;
+        draw_op(&rc, op, fnt, tex, tex_n, cx, cy, cw, ch, scale);
+    }
 }
 
 void render_full(uint32_t *canvas, int w, int h, FontCtx *fnt, const DrawList *dl,
