@@ -8,6 +8,27 @@
 
 #include <stdbool.h>
 
+/* The UI's vocabulary, so the screens agree. Sizes are in screen units (the panel is 640x480 whatever its
+ * pixels). Four steps, one colour role each. */
+#define W_SIZE_DISPLAY 19
+#define W_SIZE_TITLE   14
+#define W_SIZE_BODY    12
+#define W_SIZE_SMALL   11
+
+/* One radius set: cards and fields, then chips and badges. A pill is half its height and is spelled that way
+ * at the call site. */
+#define W_RADIUS_CARD  8
+#define W_RADIUS_CHIP  4
+
+/* One spacing rhythm. */
+#define W_SPACE_XS     6
+#define W_SPACE_S      10
+#define W_SPACE_M      16
+#define W_SPACE_L      24
+
+/* The accent rule: three places per screen -- the focused item, the primary action chip, and one status or
+ * progress element. Everything else is ink, muted or faint. More than that is what made the screens noisy. */
+
 /* A rounded panel with the palette's body colour and a hairline top highlight, as the menu's cards are. */
 void widget_panel(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, int radius);
 
@@ -34,5 +55,8 @@ void widget_title(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, co
 void widget_label(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);
 void widget_small(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);
 void widget_mono(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);
+
+/* The fourth step: the smallest line on a card and in a hint bar. */
+void widget_tiny(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);
 
 #endif /* BANANATUBE_WIDGET_H */

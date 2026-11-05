@@ -243,7 +243,7 @@ void settings_draw_bot(SettingsView *sv, DrawList *dl, const UiTheme *t)
     for (int i = sv->top; i < ROW_N && i < sv->top + visible; i++) {
         int y = LIST_Y + (i - sv->top) * ROW_H;
         bool on = (i == sv->sel);
-        dl_rect_rounded(dl, 10, y, SCREEN_W - 20, ROW_H - 8, 8, on ? t->panel_hi : t->panel);
+        dl_rect_rounded(dl, 10, y, SCREEN_W - 20, ROW_H - 8, W_RADIUS_CARD, on ? t->panel_hi : t->panel);
         if (on) dl_rect_rounded(dl, 10, y, 3, ROW_H - 8, 2, t->accent);
 
         widget_label(dl, t, 22, y, SCREEN_W - 240, ROW_H - 8, ROWS[i].label, ALIGN_LEFT);

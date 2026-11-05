@@ -377,13 +377,13 @@ static void draw_playing(AppState *st, DrawList *dl)
     const UiTheme *t = &st->theme;
     const Playing *pl = &st->playing;
 
-    dl_text_wrapped(dl, 16, 58, SCREEN_W - 32, 52, pl->title[0] ? pl->title : "Playing", FONT_UI_BOLD, 20,
+    dl_text_wrapped(dl, 16, 58, SCREEN_W - 32, 52, pl->title[0] ? pl->title : "Playing", FONT_UI_BOLD, W_SIZE_DISPLAY,
                     t->ink, ALIGN_LEFT, VALIGN_TOP, 2, 24);
     widget_small(dl, t, 16, 114, SCREEN_W - 200, 18, pl->channel, ALIGN_LEFT);
     if (pl->dropped > 0) {
         char d[32];
         snprintf(d, sizeof d, "%d frames dropped", pl->dropped);
-        dl_text(dl, SCREEN_W - 240, 114, 224, 18, d, FONT_UI, 11, t->warn, ALIGN_RIGHT, VALIGN_MIDDLE);
+        dl_text(dl, SCREEN_W - 240, 114, 224, 18, d, FONT_UI, W_SIZE_SMALL, t->warn, ALIGN_RIGHT, VALIGN_MIDDLE);
     }
 
     /* what the video unit is decoding, and how loud it is */
@@ -428,7 +428,7 @@ static void draw_playing(AppState *st, DrawList *dl)
         case TP_STOP:     label = "[] stop"; break;
         default: break;
         }
-        dl_rect_rounded(dl, x, TP_Y, w, TP_H, 8, hot ? t->accent : t->panel);
+        dl_rect_rounded(dl, x, TP_Y, w, TP_H, W_RADIUS_CARD, hot ? t->accent : t->panel);
         dl_text(dl, x, TP_Y, w, TP_H, label, FONT_UI_BOLD, 13,
                 hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
     }
@@ -469,10 +469,10 @@ static void draw_history(AppState *st, DrawList *dl)
         bool on = (at == st->history_sel);
         int y = top + r * row_h;
 
-        dl_rect_rounded(dl, 12, y, SCREEN_W - 24, row_h - 8, 8, on ? t->panel_hi : t->panel);
+        dl_rect_rounded(dl, 12, y, SCREEN_W - 24, row_h - 8, W_RADIUS_CARD, on ? t->panel_hi : t->panel);
         if (on) dl_rect_rounded(dl, 12, y, 3, row_h - 8, 2, t->accent);
 
-        dl_text_wrapped(dl, 24, y + 6, SCREEN_W - 190, 30, it->title, FONT_UI_BOLD, 14, t->ink,
+        dl_text_wrapped(dl, 24, y + 6, SCREEN_W - 190, 30, it->title, FONT_UI_BOLD, W_SIZE_TITLE, t->ink,
                         ALIGN_LEFT, VALIGN_TOP, 1, 18);
         char line[160];
         char pos[16], dur[16];
@@ -542,10 +542,10 @@ static void draw_details(AppState *st, DrawList *dl, const BottomTex *tex, int t
     }
     if (!title) return;
 
-    dl_text_wrapped(dl, 20, y, SCREEN_W - 40, 68, title, FONT_UI_BOLD, 22, t->ink,
+    dl_text_wrapped(dl, 20, y, SCREEN_W - 40, 68, title, FONT_UI_BOLD, W_SIZE_DISPLAY, t->ink,
                     ALIGN_LEFT, VALIGN_TOP, 2, 28);
-    widget_small(dl, t, 20, y + 74, SCREEN_W - 40, 20, channel ? channel : "", ALIGN_LEFT);
-    widget_small(dl, t, 20, y + 96, SCREEN_W - 40, 20, line, ALIGN_LEFT);
+    widget_tiny(dl, t, 20, y + 74, SCREEN_W - 40, 20, channel ? channel : "", ALIGN_LEFT);
+    widget_tiny(dl, t, 20, y + 96, SCREEN_W - 40, 20, line, ALIGN_LEFT);
 
     /* The picture, large: the panel is mostly empty otherwise, and this is the video about to be played. */
     int pw = SCREEN_W - 40, ph = SCREEN_H - 30 - (y + 122) - 10;

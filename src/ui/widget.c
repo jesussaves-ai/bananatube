@@ -23,9 +23,9 @@ int widget_hint(DrawList *dl, const UiTheme *t, int x, int y, BananaKey key, con
 {
     const char *k = key_hint_label(key);
     int kw = 14 + 7 * (int)strlen(k);                 /* a chip as wide as its letters need */
-    dl_rect_rounded(dl, x, y, kw, 18, 4, hot ? t->accent : t->panel_hi);
-    dl_text(dl, x, y, kw, 18, k, FONT_UI_BOLD, 11, hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
-    dl_text(dl, x + kw + 5, y, 200, 18, label, FONT_UI, 12, hot ? t->ink : t->muted, ALIGN_LEFT, VALIGN_MIDDLE);
+    dl_rect_rounded(dl, x, y, kw, 18, W_RADIUS_CHIP, hot ? t->accent : t->panel_hi);
+    dl_text(dl, x, y, kw, 18, k, FONT_UI_BOLD, W_SIZE_SMALL, hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+    dl_text(dl, x + kw + 5, y, 200, 18, label, FONT_UI, W_SIZE_BODY, hot ? t->ink : t->muted, ALIGN_LEFT, VALIGN_MIDDLE);
     return kw + 5 + 7 * (int)strlen(label);
 }
 
@@ -72,20 +72,26 @@ void widget_header(DrawList *dl, const UiTheme *t, const char *title)
 
 void widget_title(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align)
 {
-    dl_text(dl, x, y, w, h, text, FONT_UI_BOLD, 19, t->ink, align, VALIGN_MIDDLE);
+    dl_text(dl, x, y, w, h, text, FONT_UI_BOLD, W_SIZE_DISPLAY, t->ink, align, VALIGN_MIDDLE);
 }
 
 void widget_label(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align)
 {
-    dl_text(dl, x, y, w, h, text, FONT_UI, 14, t->ink, align, VALIGN_MIDDLE);
+    dl_text(dl, x, y, w, h, text, FONT_UI, W_SIZE_TITLE, t->ink, align, VALIGN_MIDDLE);
 }
 
 void widget_small(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align)
 {
-    dl_text(dl, x, y, w, h, text, FONT_UI, 12, t->muted, align, VALIGN_MIDDLE);
+    dl_text(dl, x, y, w, h, text, FONT_UI, W_SIZE_BODY, t->muted, align, VALIGN_MIDDLE);
 }
 
 void widget_mono(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align)
 {
     dl_text(dl, x, y, w, h, text, FONT_MONO, 14, t->accent, align, VALIGN_MIDDLE);
+}
+
+/* The fourth step: the smallest line on a card and in a hint bar. */
+void widget_tiny(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align)
+{
+    dl_text(dl, x, y, w, h, text, FONT_UI, W_SIZE_SMALL, t->faint, align, VALIGN_MIDDLE);
 }
