@@ -993,7 +993,9 @@ int main(int argc, char **argv)
             /* The transport row is on the panel with the touchscreen, which is the whole reason the controls
              * are down there -- and until now it was drawn but not actually reachable by finger. */
             BananaKey tapped = BK_NONE;
-            switch (ui_transport_hit(touch.x, touch.y)) {
+            TransportButton tp = ui_transport_hit(touch.x, touch.y);
+            ui_set_transport(&ui, tp);      /* the row lights where the finger went */
+            switch (tp) {
             case TP_PREV:     tapped = BK_L1;    break;
             case TP_NEXT:     tapped = BK_R1;    break;
             case TP_PAUSE:    tapped = BK_START; break;

@@ -19,15 +19,21 @@ void widget_well(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, int
     dl_rect(dl, x + radius / 2, y, w - radius, 1, t->faint);
 }
 
+int widget_hint_text(DrawList *dl, const UiTheme *t, int x, int y, const char *chip, const char *label, bool hot)
+{
+    int kw = 14 + 7 * (int)strlen(chip);              /* a chip as wide as its letters need */
+    if (kw < 30) kw = 30;                             /* ...but a one-letter key is not a sliver */
+    if (dl) {
+        dl_rect_rounded(dl, x, y, kw, 18, W_RADIUS_CHIP, hot ? t->accent : t->panel_hi);
+        dl_text(dl, x, y, kw, 18, chip, FONT_UI_BOLD, W_SIZE_SMALL, hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+        dl_text(dl, x + kw + 5, y, 200, 18, label, FONT_UI, W_SIZE_BODY, hot ? t->ink : t->muted, ALIGN_LEFT, VALIGN_MIDDLE);
+    }
+    return kw + 5 + 7 * (int)strlen(label);
+}
+
 int widget_hint(DrawList *dl, const UiTheme *t, int x, int y, BananaKey key, const char *label, bool hot)
 {
-    const char *k = key_hint_label(key);
-    int kw = 14 + 7 * (int)strlen(k);                 /* a chip as wide as its letters need */
-    if (kw < 30) kw = 30;                             /* ...but a one-letter key is not a sliver */
-    dl_rect_rounded(dl, x, y, kw, 18, W_RADIUS_CHIP, hot ? t->accent : t->panel_hi);
-    dl_text(dl, x, y, kw, 18, k, FONT_UI_BOLD, W_SIZE_SMALL, hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
-    dl_text(dl, x + kw + 5, y, 200, 18, label, FONT_UI, W_SIZE_BODY, hot ? t->ink : t->muted, ALIGN_LEFT, VALIGN_MIDDLE);
-    return kw + 5 + 7 * (int)strlen(label);
+    return widget_hint_text(dl, t, x, y, key_hint_label(key), label, hot);
 }
 
 void widget_hints_row(DrawList *dl, const UiTheme *t, const char *title)

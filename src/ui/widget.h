@@ -35,7 +35,10 @@ void widget_panel(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, in
 /* A sunken field: what the search bar looks like empty. */
 void widget_well(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, int radius);
 
-/* A pill with a key chip and its word: "A Play". Returns the width it used. */
+/* A pill with a chip and its word: "A Play". Returns the width it used. The chip's face can be given rather
+ * than taken from a key, for a button that is a pair of arrows. Pass a NULL list to measure it and draw
+ * nothing: a row whose chip widths follow their words cannot be centred without measuring first. */
+int  widget_hint_text(DrawList *dl, const UiTheme *t, int x, int y, const char *chip, const char *label, bool hot);
 int  widget_hint(DrawList *dl, const UiTheme *t, int x, int y, BananaKey key, const char *label, bool hot);
 
 /* The button hints along the bottom of a view. `keys`/`labels` are parallel, `n` of them. */

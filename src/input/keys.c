@@ -86,6 +86,12 @@ const char *key_hint_label(BananaKey k)
     case BK_START:  return "START";
     case BK_SELECT: return "SELECT";
     case BK_HOME:   return "HOME";
+    /* The D-pad's faces. Without them a hint chip for a D-pad action was an empty pill, which reads as a
+     * button that is missing -- and on the playing screen the D-pad is seek and volume. */
+    case BK_LEFT:   return "\xE2\x86\x90";
+    case BK_RIGHT:  return "\xE2\x86\x92";
+    case BK_UP:     return "\xE2\x86\x91";
+    case BK_DOWN:   return "\xE2\x86\x93";
     default:        return "";
     }
 }

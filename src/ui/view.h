@@ -104,6 +104,8 @@ typedef struct {
     int      wordmark_x;
     int      battery;
     bool     charging;
+    /* The transport button the last tap landed on: the row lights it, so a finger can see where it went. */
+    TransportButton tp_sel;
 } AppState;
 
 void      ui_init(AppState *st);
@@ -127,6 +129,8 @@ void      ui_set_playing_state(AppState *st, double position, double duration, b
 void      ui_set_full_state(AppState *st, int volume, int quality, bool video_on, int dropped);
 void      ui_set_history(AppState *st, const History *h);
 void      ui_set_playing_stopped(AppState *st, const char *why);
+/* The transport button a tap landed on, so the row can show where the finger went. */
+void      ui_set_transport(AppState *st, TransportButton b);
 /* Open the app's own settings (START on the results). The Conf is main.c's; the view changes it in place and
  * reports UI_SETTINGS_SAVE when it does, so main.c can write the file and apply the change. */
 void      ui_open_settings(AppState *st, Conf *conf);

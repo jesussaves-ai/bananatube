@@ -420,5 +420,48 @@ int main(void)
     check_int(bananas, 1);                             /* the wordmark is there whether or not the mark is */
     check_int(percents, 0);
 
+    /* ---- the bottom bar ----
+     * The hint row is centred, and a row of chips whose widths follow their words cannot be laid out from a
+     * fixed left edge and still come out even. The first chip has to start exactly where a row measured with
+     * the same helper would start. */
+    ui_init(&st);
+    ui_set_playing(&st, "id", "Title", "Channel", 100);
+    st.status[0] = 0;
+    DrawList barops;
+    ui_draw_bot(&st, &barops, NULL, 0);
+    int bartop = SCREEN_H - 30, barfirst = -1;
+    for (int i = 0; i < barops.n; i++) {
+        const DrawOp *o = &barops.op[i];
+        if (o->kind == OP_RECT && o->y > bartop) { barfirst = o->x; break; }
+    }
+    static const char *chips[5] = { "START", "\xE2\x86\x90\xE2\x86\x92", "\xE2\x86\x91\xE2\x86\x93", "X", "B" };
+    static const char *words[5] = { "pause", "seek", "volume", "quality", "stop" };
+    int bartotal = 0;
+    for (int i = 0; i < 5; i++) bartotal += widget_hint_text(NULL, &st.theme, 0, 0, chips[i], words[i], i == 0) + 16;
+    bartotal -= 16;
+    check_int(barfirst, (SCREEN_W - bartotal) / 2);
+
+    /* the D-pad's chips are not blank: seek and volume are the D-pad, and its face is two arrows */
+    int bararrows = 0;
+    for (int i = 0; i < barops.n; i++)
+        if (barops.op[i].kind == OP_TEXT && strstr(barops.op[i].text, "\xE2\x86") != NULL) bararrows++;
+    check_int(bararrows, 2);
+
+    /* the transport row lights the button the last tap landed on */
+    ui_init(&st);
+    ui_set_playing(&st, "id", "Title", "Channel", 100);
+    ui_set_transport(&st, TP_QUALITY);
+    check_int(st.tp_sel, TP_QUALITY);
+    DrawList tpops;
+    ui_draw_bot(&st, &tpops, NULL, 0);
+    int tpx, tpw;
+    ui_transport_box(4, &tpx, &tpw);
+    int tprimms = 0;
+    for (int i = 0; i < tpops.n; i++) {
+        const DrawOp *o = &tpops.op[i];
+        if (o->kind == OP_RECT && o->x == tpx && o->y == TP_Y && o->w == tpw && o->color == st.theme.accent) tprimms++;
+    }
+    check_int(tprimms, 1);
+
     test_done();
 }

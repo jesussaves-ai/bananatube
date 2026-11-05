@@ -62,6 +62,7 @@ void ui_init(AppState *st)
     str_copy(st->status, sizeof st->status, "SELECT searches");
     st->logo_image = -1;      /* no mark and no percentage until main.c says so */
     st->battery = -1;
+    st->tp_sel = TP_PAUSE;               /* the transport row always shows one button lit */
     layout(st);
     st->dirty = true;
 }
@@ -146,6 +147,13 @@ void ui_set_playing_stopped(AppState *st, const char *why)
     st->view = VIEW_RESULTS;
     layout(st);
     st->dirty = true;
+}
+
+void ui_set_transport(AppState *st, TransportButton b)
+{
+    if (b == TP_NONE || b == st->tp_sel) return;
+    st->tp_sel = b;
+    st->dirty = true;                    /* the highlight has to move on the panel */
 }
 
 void ui_set_results(AppState *st, const SearchResult *items, int n, const char *message)
@@ -349,44 +357,59 @@ static void draw_hints(AppState *st, DrawList *dl)
 {
     const UiTheme *t = &st->theme;
     dl_rect(dl, 0, SCREEN_H - HINTS_H, SCREEN_W, HINTS_H, t->bar);
-    int x = 10;
-    int y = SCREEN_H - HINTS_H + (HINTS_H - 18) / 2;
 
-    /* One accent chip per row -- the action the row leads with, the one the thumb is already on. Two accent
-     * chips read as two primary actions, and on the handheld that is what made the bar look loud. */
+    /* The row, per view. One accent chip per row -- the action the row leads with, the one the thumb is
+     * already on. Two accent chips read as two primary actions, and on the handheld that is what made the
+     * bar look loud. A chip is a key's own face, or a written one where one button is a pair of arrows. */
+    struct Hint { const char *chip; const char *label; bool hot; };
+    struct Hint h[6];
+    int n = 0;
     if (st->view == VIEW_PLAYING) {
-        x += widget_hint(dl, t, x, y, BK_START, st->playing.paused ? "resume" : "pause", true) + 16;
-        x += widget_hint(dl, t, x, y, BK_LEFT, "seek", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_UP, "volume", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_X, "quality", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_B, "stop", false) + 16;
+        h[n].chip = key_hint_label(BK_START); h[n].label = st->playing.paused ? "resume" : "pause"; h[n].hot = true; n++;
+        h[n].chip = "\xE2\x86\x90\xE2\x86\x92"; h[n].label = "seek"; h[n].hot = false; n++;
+        h[n].chip = "\xE2\x86\x91\xE2\x86\x93"; h[n].label = "volume"; h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_X); h[n].label = "quality"; h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_B); h[n].label = "stop"; h[n].hot = false; n++;
     } else if (st->view == VIEW_HISTORY) {
-        x += widget_hint(dl, t, x, y, BK_A, "carry on", true) + 16;
-        x += widget_hint(dl, t, x, y, BK_B, "back", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_HOME, "quit", false) + 16;
+        h[n].chip = key_hint_label(BK_A);    h[n].label = "carry on"; h[n].hot = true;  n++;
+        h[n].chip = key_hint_label(BK_B);    h[n].label = "back";     h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_HOME); h[n].label = "quit";     h[n].hot = false; n++;
     } else if (st->view == VIEW_KEYBOARD) {
-        x += widget_hint(dl, t, x, y, BK_A, "type", true) + 16;
-        x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_START, "search", false) + 16;
+        h[n].chip = key_hint_label(BK_A);     h[n].label = "type";     h[n].hot = true;  n++;
+        h[n].chip = key_hint_label(BK_X);     h[n].label = "capitals"; h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_Y);     h[n].label = "space";    h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_B);     h[n].label = "delete";   h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_START); h[n].label = "search";   h[n].hot = false; n++;
     } else if (st->view == VIEW_SETTINGS) {
         if (st->settings.editing) {
-            x += widget_hint(dl, t, x, y, BK_A, "type", true) + 16;
-            x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 16;
-            x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 16;
-            x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 16;
-            x += widget_hint(dl, t, x, y, BK_START, "save", false) + 16;
+            h[n].chip = key_hint_label(BK_A);     h[n].label = "type";     h[n].hot = true;  n++;
+            h[n].chip = key_hint_label(BK_X);     h[n].label = "capitals"; h[n].hot = false; n++;
+            h[n].chip = key_hint_label(BK_Y);     h[n].label = "space";    h[n].hot = false; n++;
+            h[n].chip = key_hint_label(BK_B);     h[n].label = "delete";   h[n].hot = false; n++;
+            h[n].chip = key_hint_label(BK_START); h[n].label = "save";     h[n].hot = false; n++;
         } else {
-            x += widget_hint(dl, t, x, y, BK_A, "change", true) + 16;
-            x += widget_hint(dl, t, x, y, BK_B, "back", false) + 16;
+            h[n].chip = key_hint_label(BK_A); h[n].label = "change"; h[n].hot = true;  n++;
+            h[n].chip = key_hint_label(BK_B); h[n].label = "back";   h[n].hot = false; n++;
         }
     } else {
         /* With nothing found yet there is nothing to play, so the accent is on the search instead. */
-        x += widget_hint(dl, t, x, y, BK_A, "play", st->results.count > 0) + 16;
-        x += widget_hint(dl, t, x, y, BK_SELECT, "search", st->results.count == 0) + 16;
-        x += widget_hint(dl, t, x, y, BK_Y, "watched", false) + 16;
-        x += widget_hint(dl, t, x, y, BK_B, "clear", false) + 16;
+        h[n].chip = key_hint_label(BK_A);      h[n].label = "play";    h[n].hot = st->results.count > 0;  n++;
+        h[n].chip = key_hint_label(BK_SELECT); h[n].label = "search";  h[n].hot = st->results.count == 0; n++;
+        h[n].chip = key_hint_label(BK_Y);      h[n].label = "watched"; h[n].hot = false; n++;
+        h[n].chip = key_hint_label(BK_B);      h[n].label = "clear";   h[n].hot = false; n++;
+    }
+
+    /* Centred, and measured first: a chip is as wide as its word, so the row cannot be placed by guessing.
+     * widget_hint_text with no list draws nothing and answers the width. */
+    int total = 0;
+    for (int i = 0; i < n; i++) total += widget_hint_text(NULL, t, 0, 0, h[i].chip, h[i].label, h[i].hot) + 16;
+    if (n) total -= 16;
+
+    int y = SCREEN_H - HINTS_H + (HINTS_H - 18) / 2;
+    int x = (SCREEN_W - total) / 2;
+    for (int i = 0; i < n; i++) {
+        if (i) x += 16;
+        x += widget_hint_text(dl, t, x, y, h[i].chip, h[i].label, h[i].hot);
     }
     /* the status only where there is room for it: the keyboard's hints fill the row, and a message drawn
      * over them reads as neither */
@@ -399,9 +422,9 @@ static void draw_playing(AppState *st, DrawList *dl)
     const UiTheme *t = &st->theme;
     const Playing *pl = &st->playing;
 
-    dl_text_wrapped(dl, 16, 58, SCREEN_W - 32, 52, pl->title[0] ? pl->title : "Playing", FONT_UI_BOLD, W_SIZE_DISPLAY,
-                    t->ink, ALIGN_LEFT, VALIGN_TOP, 2, 24);
-    widget_small(dl, t, 16, 114, SCREEN_W - 200, 18, pl->channel, ALIGN_LEFT);
+    dl_text_wrapped(dl, 0, 58, SCREEN_W, 52, pl->title[0] ? pl->title : "Playing", FONT_UI_BOLD, W_SIZE_DISPLAY,
+                    t->ink, ALIGN_CENTER, VALIGN_TOP, 2, 24);
+    widget_small(dl, t, 0, 114, SCREEN_W - 24, 18, pl->channel, ALIGN_CENTER);
     if (pl->dropped > 0) {
         char d[32];
         snprintf(d, sizeof d, "%d frames dropped", pl->dropped);
@@ -438,21 +461,26 @@ static void draw_playing(AppState *st, DrawList *dl)
         int x, w;
         ui_transport_box(i, &x, &w);
         const char *label = "";
-        bool hot = false;
         char q[16];
         switch (order[i]) {
-        case TP_PREV:     label = "|<";  break;
-        case TP_NEXT:     label = ">|";  break;
+        case TP_PREV:     label = "prev"; break;
+        case TP_NEXT:     label = "next"; break;
         case TP_VOL_DOWN: label = "vol -"; break;
         case TP_VOL_UP:   label = "vol +"; break;
-        case TP_PAUSE:    label = pl->paused ? "> play" : "|| pause"; hot = true; break;
+        case TP_PAUSE:    label = pl->paused ? "play" : "pause"; break;
         case TP_QUALITY:  snprintf(q, sizeof q, "%dp", pl->quality); label = q; break;
-        case TP_STOP:     label = "[] stop"; break;
+        case TP_STOP:     label = "stop"; break;
         default: break;
         }
-        dl_rect_rounded(dl, x, TP_Y, w, TP_H, W_RADIUS_CARD, hot ? t->accent : t->panel);
-        dl_text(dl, x, TP_Y, w, TP_H, label, FONT_UI_BOLD, 13,
-                hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
+        /* The button the last tap landed on is the one that is lit, so a finger on the row shows where it
+         * went. (The row used to light the pause button whatever was tapped, and a tap lit nothing at all.) */
+        if (st->tp_sel == order[i]) {
+            dl_rect_rounded(dl, x, TP_Y, w, TP_H, W_RADIUS_CARD, t->accent);
+            dl_rect_rounded(dl, x + 2, TP_Y + 2, w - 4, TP_H - 4, W_RADIUS_CARD - 2, t->panel);
+        } else {
+            dl_rect_rounded(dl, x, TP_Y, w, TP_H, W_RADIUS_CARD, t->panel);
+        }
+        dl_text(dl, x, TP_Y, w, TP_H, label, FONT_UI_BOLD, 13, t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
     }
 
     /* a paused video says so; so does a stopped one, with the reason */

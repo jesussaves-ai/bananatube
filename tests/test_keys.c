@@ -37,7 +37,12 @@ int main(void)
 
     check_str(key_hint_label(BK_A), "A");
     check_str(key_hint_label(BK_SELECT), "SELECT");
-    check_str(key_hint_label(BK_LEFT), "");
+    /* The D-pad has a face too. A hint chip for it used to be an empty pill, which reads as a button that
+     * is not there -- and on the playing screen the D-pad is seek and volume. */
+    check_str(key_hint_label(BK_LEFT), "\xE2\x86\x90");
+    check_str(key_hint_label(BK_UP), "\xE2\x86\x91");
+    check_str(key_hint_label(BK_RIGHT), "\xE2\x86\x92");
+    check_str(key_hint_label(BK_DOWN), "\xE2\x86\x93");
     check_str(key_name(BK_L2), "L2");
 
     test_done();
