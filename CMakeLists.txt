@@ -33,6 +33,7 @@ add_library(bananatube_core STATIC
     src/conf.c
     src/display/drawlist.c
     src/display/render.c
+    src/display/logo.c
     src/font.c
     src/input/keys.c
     src/input/keyboard.c
@@ -57,10 +58,11 @@ pkg_check_modules(CURL  REQUIRED libcurl)
 pkg_check_modules(CJSON REQUIRED libcjson)
 pkg_check_modules(JPEG  REQUIRED libjpeg)
 pkg_check_modules(FREETYPE REQUIRED freetype2)
+pkg_check_modules(PNG   REQUIRED libpng)
 target_include_directories(bananatube_core PRIVATE
-    ${CURL_INCLUDE_DIRS} ${CJSON_INCLUDE_DIRS} ${JPEG_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS})
+    ${CURL_INCLUDE_DIRS} ${CJSON_INCLUDE_DIRS} ${JPEG_INCLUDE_DIRS} ${FREETYPE_INCLUDE_DIRS} ${PNG_INCLUDE_DIRS})
 target_link_libraries(bananatube_core PUBLIC
-    ${CURL_LIBRARIES} ${CJSON_LIBRARIES} ${JPEG_LIBRARIES} ${FREETYPE_LIBRARIES} pthread m)
+    ${CURL_LIBRARIES} ${CJSON_LIBRARIES} ${JPEG_LIBRARIES} ${FREETYPE_LIBRARIES} ${PNG_LIBRARIES} pthread m)
 
 # ---- bananatube: the binary ---------------------------------------------------------------------------
 if(BANANATUBE_KMS)
@@ -109,7 +111,7 @@ endif()
 # ---- tests --------------------------------------------------------------------------------------------
 if(BANANATUBE_TESTS)
     enable_testing()
-    foreach(t drawlist keys conf parse select lru ui worker render history args settings util http theme widget)
+    foreach(t drawlist keys conf parse select lru ui worker render history args settings util http theme widget logo)
         add_executable(test_${t} tests/test_${t}.c)
         target_link_libraries(test_${t} PRIVATE bananatube_core)
         target_compile_definitions(test_${t} PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
