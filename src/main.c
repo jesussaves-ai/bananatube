@@ -826,8 +826,12 @@ int main(int argc, char **argv)
 #endif
 
         /* Page flips finish here: without draining them the flip counter never comes back down and the
-         * panels stop being updated at all. */
-        if (pfds[0].revents & POLLIN) drm_handle_events(fd);
+         * panels stop being updated at all.
+         *
+         * Unconditionally: libdrm's event queue holds both panels' completions, and drmHandleEvent returns
+         * after the first one in it, so one readiness is no guide to how many are waiting -- draining on
+         * POLLIN only (and dropping the second event) left a panel pending until some unrelated wake-up. */
+        drm_handle_events(fd);
 
         int nk = input_dispatch(&in, pfds + 1, keys, INPUT_EVENTS_MAX, &touch);
 

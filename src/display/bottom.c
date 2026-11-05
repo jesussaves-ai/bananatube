@@ -24,6 +24,7 @@ bool bottom_init(Bottom *b, int fd, const DrmPanel *p)
 void bottom_invalidate(Bottom *b)
 {
     b->have_prev = false;
+    b->filled[0] = b->filled[1] = false;      /* neither scanout buffer holds the new picture */
 }
 
 void bottom_set_font(Bottom *b, FontCtx *f)
@@ -70,9 +71,17 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
      * box, that collapse then repeated every frame -- the whole panel repainted, both panels, for ever. */
     damage_next(&own, &b->missed[back], &dmg, &b->missed[back]);
 
+    /* Nothing changed, so the panel keeps its pixels -- unless the buffer we would flip to was never filled
+     * (bottom_invalidate, a resize) and is still black: flip the whole panel rather than hand out a blank one. */
     if (b->have_prev && damage_empty(&dmg)) {
-        b->last_pixels = 0;
-        return;                                          /* nothing changed: the panel keeps its pixels */
+        if (!b->filled[back]) {
+            damage_reset(&dmg);
+            damage_add(&dmg, 0, 0, SCREEN_W, SCREEN_H);
+        }
+        else {
+            b->last_pixels = 0;
+            return;
+        }
     }
 
     if (scale <= 0) scale = 1.0f;                        /* 1.0 on the RG DS, 1.6 on the RG DS Plus */
@@ -134,6 +143,7 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
     /* The buffer going behind the flip misses *this frame's* changes -- and only those. */
     b->missed[b->front] = own;
     b->front = back;
+    b->filled[back] = true;
     b->prev = *dl;
     b->have_prev = true;
 }

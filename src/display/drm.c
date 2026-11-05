@@ -216,7 +216,11 @@ void drm_handle_events(int fd)
     memset(&ev, 0, sizeof ev);
     ev.version = DRM_EVENT_CONTEXT_VERSION;
     ev.page_flip_handler = flip_done;
-    drmHandleEvent(fd, &ev);
+    /* Both panels' handle_event contexts share one queue: a single drmHandleEvent returns after the first
+     * event it finds, and one it leaves behind wakes nobody (the card's fd does not report as pollable
+     * readable for it). Drain until the queue is empty, with a ceiling so a badly behaved driver cannot
+     * spin this loop for ever. */
+    for (int i = 0; i < 8 && drmHandleEvent(fd, &ev) > 0; i++) {}
 }
 
 bool drm_wait_vblank(int fd, const DrmPanel *p)

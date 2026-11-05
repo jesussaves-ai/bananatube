@@ -1,8 +1,10 @@
 /* innertube.c -- YouTube's own /youtubei/v1 API, without a browser and without yt-dlp.
  *
- * The Android VR client is asked for, because it is the one that still answers with plain stream URLs:
- * no signatureCipher to solve, no po_token round-trip. A reply that does come back ciphered is reported as
- * RESOLVE_NEEDS_CIPHER and net/resolver.c moves on rather than shipping a JavaScript interpreter.
+ * The iOS client is asked for, because it is the one that still answers with plain stream URLs: no
+ * signatureCipher to solve, no po_token round-trip. (Android VR also answers with plain URLs, but its CDN
+ * refuses the open-ended Range request ffmpeg opens a stream with -- 403 on every playable URL.) A reply that
+ * does come back ciphered is reported as RESOLVE_NEEDS_CIPHER and net/resolver.c moves on rather than
+ * shipping a JavaScript interpreter.
  *
  * Responses are walked rather than addressed by path: YouTube moves its renderers around between builds
  * (twoColumnSearchResultsRenderer one month, sectionListRenderer's contents the next), but a "videoRenderer"
@@ -20,7 +22,7 @@
 #define INNERTUBE_SEARCH "https://www.youtube.com/youtubei/v1/search?prettyPrint=false"
 #define INNERTUBE_PLAYER "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
 
-/* The key the Android VR client sends. It is public (every client ships one); BANANATUBE_KEY overrides it
+/* The key the clients send. It is public (every client ships one); BANANATUBE_KEY overrides it
  * without a rebuild, which is what to use when YouTube rotates it. */
 #define INNERTUBE_KEY_DEFAULT "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w"
 
@@ -67,16 +69,15 @@ static void client_context(char *out, size_t cap)
     pthread_mutex_lock(&g_visitor_lock);
     snprintf(out, cap,
         "\"context\":{\"client\":{"
-        "\"clientName\":\"ANDROID_VR\","
-        "\"clientVersion\":\"1.64.0\","
-        "\"deviceMake\":\"Oculus\","
-        "\"deviceModel\":\"Quest 3\","
-        "\"osName\":\"Android\","
-        "\"osVersion\":\"12\","
-        "\"androidSdkVersion\":32,"
+        "\"clientName\":\"IOS\","
+        "\"clientVersion\":\"20.10.4\","
+        "\"deviceMake\":\"Apple\","
+        "\"deviceModel\":\"iPhone16,2\","
+        "\"osName\":\"iPhone\","
+        "\"osVersion\":\"18.3.1.22D72\","
         "\"hl\":\"en\",\"gl\":\"US\","
         "\"visitorData\":\"%s\","
-        "\"userAgent\":\"com.google.android.apps.youtube.vr.oculus/1.64.0 (Linux; U; Android 12; GB) gzip\""
+        "\"userAgent\":\"com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)\""
         "}}", g_visitor);
     pthread_mutex_unlock(&g_visitor_lock);
 }

@@ -23,7 +23,7 @@ void http_set_deadline_ms(int64_t deadline_ms)
 }
 
 static bool transfer(const char *url, const char *body, const char *content_type, int timeout_ms,
-                     const char *extra_hdr, HttpResponse *out);
+                     const char *extra_hdr, size_t limit, HttpResponse *out);
 static long ip_resolve(void);
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
@@ -32,11 +32,20 @@ static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
     size_t n = size * nmemb;
     if (s->overflow) return 0;
     if (s->len + n + 1 > s->limit) {
-        /* Take what fits and stop: a reply this size is not one we can use anyway. */
+        /* Take what fits and stop: a reply this size is not one we can use anyway, and the rest of a body
+         * that big is not worth downloading. */
         size_t room = s->limit > s->len + 1 ? s->limit - s->len - 1 : 0;
-        if (room) memcpy(s->data + s->len, ptr, room), s->len += room;
+        if (room) {
+            char *grown = realloc(s->data, s->limit);   /* the first chunk can be over the limit on its own */
+            if (grown) {
+                s->data = grown;
+                memcpy(s->data + s->len, ptr, room);
+                s->len += room;
+                s->data[s->len] = '\0';
+            }
+        }
         s->overflow = true;
-        return n;                /* pretending we took it all makes curl end the transfer cleanly */
+        return 0;                /* aborts the transfer; transfer() treats that as success when a limit was asked for */
     }
     char *grown = realloc(s->data, s->len + n + 1);
     if (!grown) { s->overflow = true; return 0; }
@@ -48,7 +57,7 @@ static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *userdata)
 }
 
 static bool transfer(const char *url, const char *body, const char *content_type, int timeout_ms,
-                     const char *extra_hdr, HttpResponse *out)
+                     const char *extra_hdr, size_t limit, HttpResponse *out)
 {
     memset(out, 0, sizeof *out);
 
@@ -62,7 +71,7 @@ static bool transfer(const char *url, const char *body, const char *content_type
     if (!c) { str_copy(out->error, sizeof out->error, "curl_easy_init failed"); return false; }
 
     struct curl_slist *hdr = NULL;
-    Sink sink = { .limit = HTTP_MAX_BODY };
+    Sink sink = { .limit = limit ? limit : HTTP_MAX_BODY };
 
     curl_easy_setopt(c, CURLOPT_URL, url);
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_cb);
@@ -99,14 +108,18 @@ static bool transfer(const char *url, const char *body, const char *content_type
     if (curl_easy_getinfo(c, CURLINFO_PRIMARY_IP, &ip) == CURLE_OK && ip && *out->peer_ip == 0)
         str_copy(out->peer_ip, sizeof out->peer_ip, ip);
 
-    if (rc != CURLE_OK) {
+    /* A body cut off at the caller's own limit is the caller getting what it asked for: the status line is
+     * all a range probe needs, and the abort it causes is a write error. */
+    bool stopped_at_limit = sink.overflow && limit > 0;
+
+    if (rc != CURLE_OK && !stopped_at_limit) {
         if (rc == CURLE_OPERATION_TIMEDOUT)
             str_copy(out->error, sizeof out->error, "timed out");
         else
             snprintf(out->error, sizeof out->error, "%s (curl %d)", curl_easy_strerror(rc), (int)rc);
         free(sink.data);
         sink.data = NULL;
-    } else if (sink.overflow) {
+    } else if (sink.overflow && !stopped_at_limit) {
         str_copy(out->error, sizeof out->error, "reply too large");
         free(sink.data);
         sink.data = NULL;
@@ -146,20 +159,24 @@ void http_set_ip_family(int family)
     g_ip_family = family;
 }
 
+/* Asks the way ffmpeg opens a stream: an open-ended range, the request a media URL has to answer for playback
+ * to work at all. (A bounded "bytes=0-1" is answered 206 by URLs that then refuse ffmpeg's open-ended one --
+ * Android VR's did -- so the probe passed and the player got 403.) Only the status matters, so the body is cut
+ * off after 4 KiB. */
 bool http_get_range(const char *url, int timeout_ms, HttpResponse *out)
 {
     memset(out, 0, sizeof *out);
-    return transfer(url, NULL, NULL, timeout_ms, "Range: bytes=0-1", out);
+    return transfer(url, NULL, NULL, timeout_ms, "Range: bytes=0-", 4096, out);
 }
 
 bool http_get(const char *url, int timeout_ms, HttpResponse *out)
 {
-    return transfer(url, NULL, NULL, timeout_ms, NULL, out);
+    return transfer(url, NULL, NULL, timeout_ms, NULL, 0, out);
 }
 
 bool http_post_json(const char *url, const char *body, int timeout_ms, HttpResponse *out)
 {
-    return transfer(url, body, NULL, timeout_ms, NULL, out);
+    return transfer(url, body, NULL, timeout_ms, NULL, 0, out);
 }
 
 void http_response_free(HttpResponse *r)

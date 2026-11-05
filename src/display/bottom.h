@@ -25,6 +25,7 @@ typedef struct {
     DrawList  prev;            /* the last frame, for the damage diff */
     FontCtx  *font;            /* the text renderer (font.c); may be NULL, then text is skipped */
     bool      have_prev;
+    bool      filled[2];       /* each buffer has been handed out whole at least once */
     /* what the last frame cost, for the log and the benchmark */
     int       last_damage, last_draws;
     long      last_pixels;     /* how many pixels were repainted and copied to the panel */
