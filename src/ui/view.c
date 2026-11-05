@@ -45,12 +45,11 @@ static void layout(AppState *st)
     st->view_x = 8;
     st->view_y = GRID_Y;
     st->view_w = SCREEN_W - 16;
-    /* The grid is on the top panel and the keyboard is on the bottom one, so the grid always has the room:
-     * as many rows of tiles as fit above the top panel's own hint-free area. */
+    /* The rail is on the top panel and the keyboard is on the bottom one, so the rail always has the room:
+     * one row of cards, as tall as the widest card. */
     int bottom = SCREEN_H;
     st->view_h = bottom - GRID_Y;
-    if (st->view_h < TILE_H) st->view_h = TILE_H;
-    st->results.view_h = st->view_h;
+    if (st->view_h < RAIL_CARD_H) st->view_h = RAIL_CARD_H;
 }
 
 void ui_init(AppState *st)
@@ -153,7 +152,6 @@ void ui_set_results(AppState *st, const SearchResult *items, int n, const char *
 {
     results_clear(&st->results);
     if (n > 0) results_append(&st->results, items, n);
-    results_scroll_into_view(&st->results, st->view_h);
     st->searching = false;
     ui_set_status(st, message ? message : (n > 0 ? "" : "Nothing found."));
     if ((!message || !*message) && n > 0) {
@@ -303,7 +301,6 @@ UiAction ui_key(AppState *st, BananaKey key)
         return UI_NONE;
     case BK_LEFT: case BK_RIGHT: case BK_UP: case BK_DOWN: {
         if (!results_move(&st->results, key)) return UI_NONE;
-        results_scroll_into_view(&st->results, st->view_h);
         st->dirty = true;
         return UI_THUMBS;                         /* the visible set may have changed */
     }

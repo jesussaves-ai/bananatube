@@ -147,7 +147,7 @@ static void load_logo(AppState *ui, BottomTex *pics, FontCtx *fnt)
 static void request_visible_thumbs(AppState *st, ThumbCache *cache, ThumbWorker *worker)
 {
     int vis[RESULTS_MAX];
-    int n = results_visible(&st->results, st->view_h, vis, RESULTS_MAX);
+    int n = results_visible(&st->results, st->view_x, st->view_w, vis, RESULTS_MAX);
     for (int k = 0; k < n; k++) {
         int i = vis[k];
         const SearchResult *s = &st->results.item[i];
@@ -1458,7 +1458,6 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
         ui.results.tex_slot[0] = 0;
         ui.results.tex_slot[1] = 1;
         ui.results.sel = 3;
-        results_scroll_into_view(&ui.results, ui.view_h);
     }
 
     FontCtx *fnt = shot_fonts();

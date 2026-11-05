@@ -1,4 +1,4 @@
-/* The bottom screen's logic: the grid's geometry and selection, the keyboard, and what a button means. No
+/* The bottom screen's logic: the rail's geometry and selection, the keyboard, and what a button means. No
  * display, no fonts -- these are the parts that are wrong in a way a screenshot makes you squint at. */
 #include "input/keyboard.h"
 #include "ui/results.h"
@@ -23,75 +23,69 @@ static void fill(Results *r, int n)
 
 int main(void)
 {
-    /* ---- the grid ---- */
+    /* ---- the rail ---- */
     Results r;
     fill(&r, 8);
-    check_int(results_rows(&r), 3);
     check_int(r.sel, 0);
-    check(!results_move(&r, BK_LEFT));                 /* already at the left of its row */
+    check(!results_move(&r, BK_LEFT));                 /* already the first */
+    check(!results_move(&r, BK_UP));
     check(results_move(&r, BK_RIGHT));
     check_int(r.sel, 1);
-    check(results_move(&r, BK_DOWN));
-    check_int(r.sel, 4);                               /* one whole row */
+    check(results_move(&r, BK_RIGHT));
+    check_int(r.sel, 2);
+    check(results_move(&r, BK_LEFT));
+    check_int(r.sel, 1);
+    check(results_move(&r, BK_DOWN));                  /* a page forward */
+    check_int(r.sel, 4);
     check(results_move(&r, BK_UP));
     check_int(r.sel, 1);
-    check(!results_move(&r, BK_UP));                   /* the top row: nothing above */
-    /* the last row: right does not run off the end */
-    r.sel = 5;
-    check(results_move(&r, BK_DOWN));
-    check_int(r.sel, 7);                               /* 8 videos: the last row is short, so DOWN lands on the last */
+    r.sel = 6;
+    check(results_move(&r, BK_DOWN));                  /* 8 cards: the page clamps to the last */
+    check_int(r.sel, 7);
     check(!results_move(&r, BK_RIGHT));
-    check(!results_move(&r, BK_DOWN));                 /* nothing below the last row */
+    fill(&r, 1);                                       /* one card: nothing to move to */
+    check(!results_move(&r, BK_LEFT));
+    check(!results_move(&r, BK_RIGHT));
+    check(!results_move(&r, BK_DOWN));
+    fill(&r, 0);                                       /* and none at all */
+    check(!results_move(&r, BK_RIGHT));
 
-    /* two rows fit in 348; the selection scrolls them into view */
-    check_int(results_visible_rows(348), 2);
-    r.sel = 7;
-    results_scroll_into_view(&r, 348);
-    check(r.top_row >= 1);
+    /* the selected card is wider and centred; its neighbours sit a gap away on either side */
+    fill(&r, 8);
+    r.sel = 3;
+    int bx, by, bw, bh;
+    results_card_box(&r, 3, 8, 88, SCREEN_W - 16, &bx, &by, &bw, &bh);
+    check_int(bw, RAIL_CARD_W * 3 / 2);
+    check_int(bx, 8 + (SCREEN_W - 16 - bw) / 2);
+    check_int(by, 88);
+    check_int(bh, RAIL_CARD_H);
+    int bx2, bw2;
+    results_card_box(&r, 4, 8, 88, SCREEN_W - 16, &bx2, &by, &bw2, &bh);
+    check_int(bx2, bx + bw + RAIL_GAP);
+    check_int(bw2, RAIL_CARD_W);
+    results_card_box(&r, 2, 8, 88, SCREEN_W - 16, &bx2, &by, &bw2, &bh);
+    check_int(bx2 + bw2 + RAIL_GAP, bx);
+
+    /* the screen holds three cards and a peek, and moving brings the next one in */
+    r.sel = 0;
     int vis[RESULTS_MAX];
-    int n = results_visible(&r, 348, vis, RESULTS_MAX);
-    check_int(n, 5);                                    /* two rows of 8 videos: 3 + the 2 the last row has */
+    int n = results_visible(&r, 8, SCREEN_W - 16, vis, RESULTS_MAX);
+    check(n >= 3);
+    check(n <= 5);
+    check_int(vis[0], 0);
+    r.sel = 7;
+    n = results_visible(&r, 8, SCREEN_W - 16, vis, RESULTS_MAX);
     int found = 0;
     for (int i = 0; i < n; i++) if (vis[i] == r.sel) found = 1;
-    check(found);                                       /* the selection is always among them */
-    r.sel = 0;
-    results_scroll_into_view(&r, 348);
-    check_int(r.top_row, 0);
+    check(found);                                      /* the selection is always among them */
 
-    /* an empty list has nothing to move */
-    fill(&r, 0);
-    check(!results_move(&r, BK_DOWN));
-    check_int(results_visible(&r, 348, vis, RESULTS_MAX), 0);
-
-    /* the tiles' boxes line up in three columns and step by a row */
-    int x, y, w, h;
-    results_tile_box(0, 0, 8, 88, SCREEN_W - 16, &x, &y, &w, &h);
-    check_int(y, 88);
-    check_int(h, TILE_H);
-    int x2, y2;
-    results_tile_box(1, 0, 8, 88, SCREEN_W - 16, &x2, &y2, &w, &h);
-    check_int(x2 - x, TILE_W + TILE_GAP);
-    check_int(y2, 88);
-    results_tile_box(3, 0, 8, 88, SCREEN_W - 16, &x2, &y2, &w, &h);
-    check_int(x2, x);                                   /* the next row starts at the same x */
-    check_int(y2, 88 + TILE_H + TILE_GAP);
-
-    /* a tap on a tile finds it */
-    fill(&r, 6);
-    r.view_h = 348;
-    results_tile_box(2, 0, 8, 88, SCREEN_W - 16, &x, &y, &w, &h);
-    check_int(results_hit(&r, 348, 8, 88, SCREEN_W - 16, x + 5, y + 5), 2);
-    check_int(results_hit(&r, 348, 8, 88, SCREEN_W - 16, x + 5, y - 40), -1);
-    check_int(results_hit(&r, 348, 8, 88, SCREEN_W - 16, 4, y + 5), -1);      /* left of the first tile */
-    check_int(results_hit(&r, 348, 8, 88, SCREEN_W - 16, x - 40, y + 5), 1);   /* and x-40 is on the tile before */
-
-    /* a picture arrives for a video and its tile finds it */
+    /* a picture arrives for a video and its card finds it */
     results_set_thumb(&r, "vid00000003", 7);
     check_int(r.tex_slot[3], 7);
-    results_set_thumb(&r, "not-here", 9);               /* no such video: nothing changes */
+    results_set_thumb(&r, "not-here", 9);              /* no such video: nothing changes */
     check_int(r.tex_slot[3], 7);
 
-    /* previous/next step one result, not a grid row, and stop at the ends */
+    /* previous/next step one result, not a page, and stop at the ends */
     fill(&r, 6);
     r.sel = 0;
     check(!results_step(&r, -1));
@@ -101,6 +95,47 @@ int main(void)
     check(!results_step(&r, 1));
     check(results_step(&r, -1));
     check_int(r.sel, 4);
+
+    /* a very long title stays inside its card and is capped at two lines: the whole card is drawn inside
+     * its own box, and the one wrapped op is the title. The view is one card wide, so the card under test is
+     * the only one on screen. */
+    fill(&r, 4);
+    memset(r.item[1].title, 'x', sizeof r.item[1].title - 1);
+    r.item[1].title[sizeof r.item[1].title - 1] = 0;
+    r.sel = 1;
+    UiTheme th = ui_theme();
+    int rw = RAIL_CARD_W * 3 / 2;
+    DrawList one;
+    dl_reset(&one);
+    results_draw(&one, &r, &th, NULL, 0, 8, 88, rw, 392);
+    results_card_box(&r, 1, 8, 88, rw, &bx, &by, &bw, &bh);
+    int wrapped = 0;
+    for (int i = 0; i < one.n; i++) {
+        const DrawOp *o = &one.op[i];
+        check(o->x >= bx && o->y >= by && o->x + o->w <= bx + bw && o->y + o->h <= by + bh);
+        if (o->kind == OP_TEXT && o->wrap) { wrapped++; check_int(o->max_lines, 2); }
+    }
+    check_int(wrapped, 1);
+
+    /* a move onto a card that has no picture yet: the new card's whole box is damaged, so the placeholder is
+     * repainted and the card that lost the focus loses its highlight */
+    fill(&r, 4);
+    r.sel = 0;
+    DrawList moved, was;          /* `a`/`b2` would collide with names already in this file */
+    dl_reset(&moved);
+    results_draw(&moved, &r, &th, NULL, 0, 8, 88, SCREEN_W - 16, 392);
+    r.sel = 1;
+    dl_reset(&was);
+    results_draw(&was, &r, &th, NULL, 0, 8, 88, SCREEN_W - 16, 392);
+    Damage own, missed, dmg;
+    dl_diff(&moved, &was, &own);
+    damage_reset(&missed);
+    damage_reset(&dmg);
+    damage_next(&own, &missed, &dmg, &missed);
+    results_card_box(&r, 1, 8, 88, SCREEN_W - 16, &bx, &by, &bw, &bh);
+    check(damage_touches(&dmg, bx, by, bw, bh));
+    results_card_box(&r, 0, 8, 88, SCREEN_W - 16, &bx, &by, &bw, &bh);
+    check(damage_touches(&dmg, bx, by, bw, bh));       /* and the card that lost it */
 
     /* ---- the keyboard ---- */
     Keyboard k;
@@ -124,7 +159,7 @@ int main(void)
     check(kb_move(&k, BK_UP));
     check_int(k.row, KB_ROWS - 1);
     check(before == 1);
-    /* the cursor stays inside the grid */
+    /* the cursor stays inside the rail */
     for (int i = 0; i < 40; i++) kb_move(&k, BK_LEFT);
     check_int(k.col, 0);
     for (int i = 0; i < 40; i++) kb_move(&k, BK_RIGHT);
@@ -165,7 +200,7 @@ int main(void)
     /* the height the results are given what is left of */
     check(kb_height() > 0);
     check(kb_height() < SCREEN_H / 2);                   /* it leaves more than half the screen to the results */
-    check(SCREEN_H - kb_height() - TILE_H > 0);          /* and a row of tiles still fits above it */
+    check(SCREEN_H - kb_height() - RAIL_CARD_H > 0);     /* and a row of cards still fits above it */
 
     /* ---- what a button means ---- */
     AppState st;
@@ -183,7 +218,7 @@ int main(void)
     check_int(st.view, VIEW_RESULTS);                    /* the keyboard gets out of the way */
     check(st.searching);
 
-    /* results arrive and the grid can be walked; a move may need pictures */
+    /* results arrive and the rail can be walked; a move may need pictures */
     fill(&st.results, 6);
     st.searching = false;
     check_int(ui_key(&st, BK_RIGHT), UI_THUMBS);
@@ -212,9 +247,9 @@ int main(void)
 
     /* the views get a height that fits what they draw */
     ui_init(&st);
-    check(st.view_h >= TILE_H);
+    check(st.view_h >= RAIL_CARD_H);
     ui_key(&st, BK_X);
-    check(st.view_h >= TILE_H);
+    check(st.view_h >= RAIL_CARD_H);
 
     /* ---- a frame's draw list is that frame's, and nothing else's ----
      * ui_draw clears the list it is handed. The app used to reset it once outside its main loop, so every
