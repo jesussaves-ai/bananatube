@@ -197,9 +197,9 @@ int settings_hit(const SettingsView *sv, int x, int y)
     return (i >= 0 && i < ROW_N) ? i : -1;
 }
 
-void settings_draw_top(SettingsView *sv, DrawList *dl, const UiTheme *t)
+void settings_draw_top(SettingsView *sv, DrawList *dl, const UiTheme *t, const HeaderInfo *info)
 {
-    widget_header(dl, t, "Settings");
+    widget_header(dl, t, info);
 
     if (sv->editing) {
         widget_label(dl, t, 20, 58, SCREEN_W - 40, 24, "Instance", ALIGN_LEFT);

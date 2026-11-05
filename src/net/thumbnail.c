@@ -12,7 +12,7 @@
 void thumb_init(ThumbCache *tc, int cap)
 {
     memset(tc, 0, sizeof *tc);
-    if (cap > THUMB_MAX_SLOTS) cap = THUMB_MAX_SLOTS;
+    if (cap > THUMB_MARK_SLOT) cap = THUMB_MARK_SLOT;   /* the mark's slot is never a thumbnail's */
     if (cap < 0) cap = 0;
     tc->cap = cap;
 }

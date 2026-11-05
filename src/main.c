@@ -13,12 +13,14 @@
 #include "display/bottom.h"
 #include "display/drm.h"
 #include "display/gbm_egl.h"
+#include "display/logo.h"
 #include "font.h"
 #include "input/evdev.h"
 #include "net/http.h"
 #include "net/resolver.h"
 #include "net/resolvejob.h"
 #include "net/worker.h"
+#include "ui/battery.h"
 #include "ui/view.h"
 #ifdef BANANATUBE_MPV
 #include "display/gles_blit.h"
@@ -50,6 +52,8 @@ static void on_term(int sig) { (void)sig; g_quit = 1; }
 #define TTF_TITLE "/usr/share/banana/banana/fonts/Inter-Regular.ttf"
 #define TTF_BOLD  "/usr/share/banana/banana/fonts/Inter-SemiBold.ttf"
 #define TTF_PIXEL "/usr/share/banana/rnds/fonts/PixelifySans-Medium.ttf"
+/* The menu's own mark: where ui/Makefile puts the assets/banana folder. */
+#define LOGO_PATH "/usr/share/banana/banana/banana-48.png"
 
 /* On the handheld the fonts are where BananaOS installs them. On a computer (the --shot path, a test) they are
  * in a checkout's ui/assets, so BANANATUBE_FONTS names that directory. */
@@ -96,6 +100,46 @@ static void tex_free_all(BottomTex *slots, int n)
         slots[i].pixels = NULL;
         slots[i].w = slots[i].h = 0;
     }
+}
+
+/* The colour the mark is composited onto: it sits on the header's bar, so that is what shows through it. */
+static uint32_t theme_bar_rgb(const UiTheme *t)
+{
+    return t->bar & 0xffffffu;
+}
+
+/* Where the mark is. The same shape as first_font: BANANATUBE_FONTS names the assets root on a machine that
+ * keeps the tree somewhere else (the tests and --shot do), otherwise the path the image installs it at. */
+static const char *logo_path(void)
+{
+    static char buf[512];
+    const char *dir = getenv("BANANATUBE_FONTS");
+    if (dir && *dir) {
+        snprintf(buf, sizeof buf, "%s/banana/banana-48.png", dir);
+        if (access(buf, R_OK) == 0) return buf;
+    }
+    return LOGO_PATH;
+}
+
+/* The battery, re-read at most every couple of seconds -- never per frame, and not at all on a machine with
+ * no gauge: then the header simply carries no percentage. */
+static void refresh_battery(AppState *ui)
+{
+    static Battery bat = { false, 100, false };
+    if (battery_get(&bat, "/sys/class/power_supply", now_ms() / 1000.0, 2.0))
+        ui_set_battery(ui, bat.have ? bat.percent : -1, bat.charging);
+}
+
+/* The header's mark, decoded once into the slot the thumbnail cache is kept away from, so it stays there for
+ * the life of the process. A missing or unreadable file is not an error: the header just says BananaTube. */
+static void load_logo(AppState *ui, BottomTex *pics, FontCtx *fnt)
+{
+    static BottomTex mark;
+    if (!logo_load(&mark, logo_path(), theme_bar_rgb(&ui->theme))) return;
+    tex_store(pics, THUMB_MAX_SLOTS, THUMB_MARK_SLOT, (uint8_t *)mark.pixels, mark.w, mark.h);
+    mark.pixels = NULL;                                  /* the slot owns it now */
+    if (fnt)
+        ui_set_logo(ui, THUMB_MARK_SLOT, font_text_width(fnt, FONT_UI_BOLD, W_SIZE_DISPLAY, "Banana") + 6);
 }
 
 /* Ask for the picture of every tile on screen that has not got one: what draws the grid is what decides what
@@ -441,6 +485,8 @@ static int cli_bench(int argc, char **argv)
     }
 
     FontCtx *fnt = shot_fonts();
+    load_logo(&ui, pics, fnt);
+    refresh_battery(&ui);
     int w = plus ? 1024 : 640, h = plus ? 768 : 480;
     float scale = plus ? 1.6f : 1.0f;
     uint32_t *canvas = calloc((size_t)w * h, sizeof(uint32_t));
@@ -597,6 +643,8 @@ static int cli_search(int argc, char **argv)
     static BottomTex pics[THUMB_MAX_SLOTS];
     fetch_visible_thumbs(&ui, &conf, pics);
     FontCtx *fnt = shot_fonts();
+    load_logo(&ui, pics, fnt);
+    refresh_battery(&ui);
     char path[600];
     snprintf(path, sizeof path, "%s/search.ppm", out ? out : "/tmp");
     save_panels(path, &ui, fnt, pics, plus, SHOT_BOTH);
@@ -659,6 +707,8 @@ static int cli_keys(int argc, char **argv)
     fetch_visible_thumbs(&ui, &conf, pics);      /* the real pictures, so a frame is what the handheld shows */
 
     FontCtx *fnt = shot_fonts();
+    load_logo(&ui, pics, fnt);
+    refresh_battery(&ui);
     char path[600];
     snprintf(path, sizeof path, "%s/00-start.ppm", out ? out : "/tmp");
     save_panels(path, &ui, fnt, pics, plus, SHOT_BOTH);
@@ -866,6 +916,8 @@ int main(int argc, char **argv)
     ThumbCache cache;
     thumb_init(&cache, conf.cache_size);
     static BottomTex pics[THUMB_MAX_SLOTS];
+    load_logo(&ui, pics, fnt);
+    refresh_battery(&ui);
     if (initial && *initial && search) search_job_begin(search, ui.query);
 
     struct pollfd pfds[2 + INPUT_MAX_DEV];
@@ -1180,6 +1232,7 @@ int main(int argc, char **argv)
 
         if (dirty) {
             int64_t t0 = now_ms();
+            refresh_battery(&ui);
             ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
             ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
             int64_t t1 = now_ms();
@@ -1409,6 +1462,8 @@ static int shot(const char *path, bool keyboard, bool with_results, bool plus, b
     }
 
     FontCtx *fnt = shot_fonts();
+    load_logo(&ui, pics, fnt);
+    refresh_battery(&ui);
     bool ok = save_panels(path, &ui, fnt, pics, plus, panel);
     font_free(fnt);
     return ok ? 0 : 1;

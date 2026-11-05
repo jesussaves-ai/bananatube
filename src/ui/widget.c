@@ -57,10 +57,32 @@ void widget_spinner(DrawList *dl, const UiTheme *t, int cx, int cy, int radius, 
     }
 }
 
-void widget_header(DrawList *dl, const UiTheme *t, const char *title)
+void widget_header(DrawList *dl, const UiTheme *t, const HeaderInfo *info)
 {
     dl_rect(dl, 0, 0, SCREEN_W, 44, t->bar);
-    widget_title(dl, t, 16, 0, 400, 44, title, ALIGN_LEFT);
+
+    /* A screen with its own name (Settings) is not the brand: it says so and stops there. */
+    if (info && info->title) {
+        widget_title(dl, t, 16, 0, 400, 44, info->title, ALIGN_LEFT);
+    } else {
+        /* The mark is a picture like any other: a draw op names it by its slot, and there is none unless
+         * main.c decoded one and put it there. */
+        int mark = (info && info->logo_image >= 0);
+        int x = mark ? 44 : 16;
+        if (mark) dl_image(dl, 12, 10, 24, 24, info->logo_image, FIT_CONTAIN, t->bar);
+        dl_text(dl, x, 0, 400, 44, "Banana", FONT_UI_BOLD, W_SIZE_DISPLAY, t->accent,
+                ALIGN_LEFT, VALIGN_MIDDLE);
+        if (info && info->tube_x > 0)
+            dl_text(dl, x + info->tube_x, 0, 400, 44, "Tube", FONT_UI_BOLD, W_SIZE_DISPLAY, t->ink,
+                    ALIGN_LEFT, VALIGN_MIDDLE);
+    }
+
+    if (info && info->battery >= 0) {
+        char pct[16];
+        snprintf(pct, sizeof pct, "%d%%", info->battery);
+        widget_mono(dl, t, SCREEN_W - 244, 6, 40, 32, pct, ALIGN_RIGHT);
+        widget_bar(dl, t, SCREEN_W - 196, 28, 44, 6, (float)info->battery / 100.0f, true);
+    }
 
     time_t now = time(NULL);
     struct tm tmv;

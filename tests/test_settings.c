@@ -121,7 +121,8 @@ int main(void)
     DrawList dl;
     memset(&dl, 0x5a, sizeof dl);
     dl_reset(&dl);
-    settings_draw_top(&sv, &dl, &th);
+    HeaderInfo info = { -1, 0, -1, false, "Settings" };
+    settings_draw_top(&sv, &dl, &th, &info);
     check(dl.n > 0);
     check_int(dl.dropped, 0);
     settings_open(&sv, &conf);

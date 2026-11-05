@@ -98,6 +98,12 @@ typedef struct {
     int      view_x, view_y, view_w, view_h;   /* where the grid is drawn (the keyboard shrinks it) */
     float    spin;                             /* the spinner's phase, turned by main.c while a search runs */
     bool     dirty;
+    /* The header's furniture: the brand mark's slot in the picture array (-1 for none), where the wordmark's
+     * second half starts, and the battery (-1 for no percentage). main.c sets both. */
+    int      logo_image;
+    int      wordmark_x;
+    int      battery;
+    bool     charging;
 } AppState;
 
 void      ui_init(AppState *st);
@@ -110,6 +116,10 @@ void      ui_draw_bot(AppState *st, DrawList *dl, const BottomTex *tex, int tex_
 /* main.c tells the UI what happened, so it can say so on screen. */
 void      ui_set_results(AppState *st, const SearchResult *items, int n, const char *message);
 void      ui_set_status(AppState *st, const char *message);
+/* The header's brand mark and battery. main.c decodes the mark once and says which picture slot it landed
+ * in (-1 for none); the battery is re-read every couple of seconds and is -1 when there is none. */
+void      ui_set_logo(AppState *st, int image, int tube_x);
+void      ui_set_battery(AppState *st, int percent, bool charging);
 /* The video started: the bottom screen becomes the player's. */
 void      ui_set_playing(AppState *st, const char *id, const char *title, const char *channel, int duration_sec);
 void      ui_set_playing_state(AppState *st, double position, double duration, bool paused, bool buffering,

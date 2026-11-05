@@ -37,7 +37,7 @@ int main(void)
     /* the cap is clamped to the table */
     ThumbCache big;
     thumb_init(&big, 9999);
-    check_int(big.cap, THUMB_MAX_SLOTS);
+    check_int(big.cap, THUMB_MARK_SLOT);      /* the last slot belongs to the header's mark */
     thumb_init(&big, 0);
     check_int(thumb_slot_for(&big, "aaaaaaaaaaa"), -1);
 

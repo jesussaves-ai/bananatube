@@ -47,8 +47,22 @@ void widget_bar(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, floa
 /* A spinner: `phase` is 0..1 round the circle. */
 void widget_spinner(DrawList *dl, const UiTheme *t, int cx, int cy, int radius, float phase);
 
-/* The header strip every view shares: the bar, the title on the left, the clock on the right. */
-void widget_header(DrawList *dl, const UiTheme *t, const char *title);
+/* What the header shows on the right and as the brand: the mark (NULL for none), where the wordmark's second
+ * half starts (0 for none), and the battery (-1 for no percentage). */
+/* What the header shows: the brand mark's slot in the picture array (-1 for none), where the wordmark's
+ * second half starts (0 for none), the battery (-1 for no percentage) and whether it is on the cable. A
+ * screen that wants its own name where the brand goes sets title instead: Settings is not the brand. */
+typedef struct {
+    int         logo_image;
+    int         tube_x;
+    int         battery;
+    bool        charging;
+    const char *title;
+} HeaderInfo;
+
+/* The header strip every view shares: the bar, the brand and the wordmark on the left, the battery and the
+ * clock on the right. */
+void widget_header(DrawList *dl, const UiTheme *t, const HeaderInfo *info);
 
 /* Text with the palette's colours and the sizes this app uses, so the two views agree. */
 void widget_title(DrawList *dl, const UiTheme *t, int x, int y, int w, int h, const char *text, HAlign align);

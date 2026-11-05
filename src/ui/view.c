@@ -61,6 +61,8 @@ void ui_init(AppState *st)
     results_clear(&st->results);
     kb_reset(&st->kb);
     str_copy(st->status, sizeof st->status, "SELECT searches");
+    st->logo_image = -1;      /* no mark and no percentage until main.c says so */
+    st->battery = -1;
     layout(st);
     st->dirty = true;
 }
@@ -70,6 +72,18 @@ void ui_set_status(AppState *st, const char *message)
     str_copy(st->status, sizeof st->status, message ? message : "");
     st->searching = false;
     st->dirty = true;
+}
+
+void ui_set_logo(AppState *st, int image, int tube_x)
+{
+    st->logo_image = image;
+    st->wordmark_x = tube_x;
+}
+
+void ui_set_battery(AppState *st, int percent, bool charging)
+{
+    st->battery = percent;
+    st->charging = charging;
 }
 
 void ui_set_playing(AppState *st, const char *id, const char *title, const char *channel, int duration_sec)
@@ -304,7 +318,8 @@ UiAction ui_key(AppState *st, BananaKey key)
 
 static void draw_header(AppState *st, DrawList *dl)
 {
-    widget_header(dl, &st->theme, "YouTube");
+    HeaderInfo info = { st->logo_image, st->wordmark_x, st->battery, st->charging, NULL };
+    widget_header(dl, &st->theme, &info);
 }
 
 static void draw_search_bar(AppState *st, DrawList *dl)
@@ -574,7 +589,13 @@ void ui_draw_top(AppState *st, DrawList *dl, const BottomTex *tex, int tex_n)
 
     if (st->view == VIEW_PLAYING) return;        /* mpv's video, with the overlay drawn over it */
     if (st->view == VIEW_HISTORY) { draw_header(st, dl); draw_history(st, dl); return; }
-    if (st->view == VIEW_SETTINGS) { settings_draw_top(&st->settings, dl, t); return; }
+    if (st->view == VIEW_SETTINGS) {
+        /* Settings is not the brand: the wordmark gives way to its own name, and the mark, the battery and
+         * the clock stay. */
+        HeaderInfo info = { st->logo_image, st->wordmark_x, st->battery, st->charging, "Settings" };
+        settings_draw_top(&st->settings, dl, t, &info);
+        return;
+    }
 
     draw_header(st, dl);
     draw_search_bar(st, dl);

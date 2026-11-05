@@ -323,5 +323,43 @@ int main(void)
     fmt_duration(-1, buf, sizeof buf);
     check_str(buf, "--:--");
 
+    /* ---- the header ---- */
+    ui_init(&st);
+    ui_set_battery(&st, 67, true);
+    ui_set_logo(&st, 0, 40);   /* a slot, not an address: a draw op names a picture by its index */
+    DrawList h1;
+    ui_draw_top(&st, &h1, NULL, 0);
+    int images = 0, bananas = 0, tubes = 0, percents = 0;
+    for (int i = 0; i < h1.n; i++) {
+        if (h1.op[i].kind == OP_IMAGE) images++;
+        if (h1.op[i].kind != OP_TEXT) continue;
+        if (strcmp(h1.op[i].text, "Banana") == 0) bananas++;
+        if (strcmp(h1.op[i].text, "Tube") == 0) tubes++;
+        if (strcmp(h1.op[i].text, "67%") == 0) percents++;
+    }
+    check_int(images, 1);                              /* the brand mark, once */
+    check_int(bananas, 1);
+    check_int(tubes, 1);
+    check_int(percents, 1);
+    for (int i = 0; i < h1.n; i++) {
+        if (h1.op[i].kind != OP_TEXT) continue;
+        if (strcmp(h1.op[i].text, "Banana") == 0) check_int((int)h1.op[i].color, (int)st.theme.accent);
+        if (strcmp(h1.op[i].text, "Tube") == 0)   check_int((int)h1.op[i].color, (int)st.theme.ink);
+    }
+
+    /* nobody set a mark and there is no battery: the wordmark alone, and no percentage -- not "0%" */
+    ui_init(&st);
+    ui_draw_top(&st, &h1, NULL, 0);
+    images = percents = bananas = 0;
+    for (int i = 0; i < h1.n; i++) {
+        if (h1.op[i].kind == OP_IMAGE) images++;
+        if (h1.op[i].kind != OP_TEXT) continue;
+        if (strcmp(h1.op[i].text, "Banana") == 0) bananas++;
+        if (strchr(h1.op[i].text, '%') != NULL) percents++;
+    }
+    check_int(images, 0);                              /* no mark: nothing is drawn for it, not a black box */
+    check_int(bananas, 1);                             /* the wordmark is there whether or not the mark is */
+    check_int(percents, 0);
+
     test_done();
 }

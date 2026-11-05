@@ -16,6 +16,7 @@
 #include "input/keyboard.h"
 #include "input/keys.h"
 #include "ui/theme.h"
+#include "ui/widget.h"
 
 #include <stdbool.h>
 
@@ -48,7 +49,9 @@ SettingsResult settings_key(SettingsView *sv, BananaKey key);
 /* The row a tap at (x, y) landed on, or -1. Device/screen units, as the bottom panel draws them. */
 int settings_hit(const SettingsView *sv, int x, int y);
 
-void settings_draw_top(SettingsView *sv, DrawList *dl, const UiTheme *t);
+/* The top panel's header and what the selected row does. The header's contents (the mark, the battery, the
+ * clock) are the app's, so they arrive in info; info->title carries this screen's own name. */
+void settings_draw_top(SettingsView *sv, DrawList *dl, const UiTheme *t, const HeaderInfo *info);
 void settings_draw_bot(SettingsView *sv, DrawList *dl, const UiTheme *t);
 
 #endif /* BANANATUBE_SETTINGS_H */

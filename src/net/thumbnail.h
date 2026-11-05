@@ -18,6 +18,10 @@
 #include <stdint.h>
 
 #define THUMB_MAX_SLOTS 48
+/* The last slot belongs to the header's brand mark, which is a picture like any other and so has to live in
+ * the array the panel draw functions are handed. thumb_init() keeps the cache one below it so a thumbnail
+ * can never take it. */
+#define THUMB_MARK_SLOT (THUMB_MAX_SLOTS - 1)
 /* The cache's target picture size, and the most the decoder ever produces. */
 #define THUMB_W 320
 #define THUMB_H 180
