@@ -18,9 +18,12 @@
 
 int drm_open(void)
 {
+    /* O_NONBLOCK: drmHandleEvent reads, and it must not wait there. drm_handle_events drains the event queue
+     * every frame, and a blocking read on a frame with no flip finished would stop the program dead (a black
+     * screen and a menu waiting on a client that never finishes). With the flag, the drain ends in EAGAIN. */
     /* card0 is the display device on the RK3568. If it is not there, take the first card that has two
      * connectors -- the same walk banana-ui does, which also makes this work under QEMU. */
-    int fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+    int fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC | O_NONBLOCK);
     if (fd >= 0) return fd;
 
     DIR *d = opendir("/dev/dri");
@@ -30,7 +33,7 @@ int drm_open(void)
         if (strncmp(e->d_name, "card", 4) != 0) continue;
         char path[320];
         snprintf(path, sizeof path, "/dev/dri/%s", e->d_name);
-        fd = open(path, O_RDWR | O_CLOEXEC);
+        fd = open(path, O_RDWR | O_CLOEXEC | O_NONBLOCK);
         if (fd >= 0) break;
     }
     closedir(d);

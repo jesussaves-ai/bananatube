@@ -159,10 +159,8 @@ void http_set_ip_family(int family)
     g_ip_family = family;
 }
 
-/* Asks the way ffmpeg opens a stream: an open-ended range, the request a media URL has to answer for playback
- * to work at all. (A bounded "bytes=0-1" is answered 206 by URLs that then refuse ffmpeg's open-ended one --
- * Android VR's did -- so the probe passed and the player got 403.) Only the status matters, so the body is cut
- * off after 4 KiB. */
+/* Is this media URL served at all? The probe asks exactly what ffmpeg will: an open-ended range. Only the
+ * status matters, so the body is cut off after 4 KiB. */
 bool http_get_range(const char *url, int timeout_ms, HttpResponse *out)
 {
     memset(out, 0, sizeof *out);

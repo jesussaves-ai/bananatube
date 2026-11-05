@@ -83,6 +83,7 @@ int select_audio_format(const Format *f, int n, bool allow_webm)
         const Format *a = &f[i];
         if (!a->audio || a->video || !a->has_url || !a->url[0]) continue;    /* audio-only entries */
         if (!allow_webm && str_starts(a->mime, "audio/webm")) continue;
+        if (!a->original) continue;                 /* a dub: same bitrate, another language */
         if (a->audio_kbps > best_kbps) { best = i; best_kbps = a->audio_kbps; }
     }
     if (best >= 0) return best;

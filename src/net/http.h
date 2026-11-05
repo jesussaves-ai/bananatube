@@ -29,7 +29,8 @@ void http_set_deadline_ms(int64_t deadline_ms);
 
 bool http_get(const char *url, int timeout_ms, HttpResponse *out);
 
-/* A GET of the first couple of bytes (`Range: bytes=0-1`), to ask a media URL whether it will be served. A
+/* A GET of the first 4 KiB (an open-ended `Range: bytes=0-`, cut off early), to ask a media URL whether it
+ * will be served -- the same request ffmpeg opens a stream with. A
  * stream URL is bound to the address that asked the API for it -- the ip= parameter is part of its signature --
  * so checking it from the same place and the same program is the only way to tell a URL that is fine from one
  * the CDN will refuse with a 403. */

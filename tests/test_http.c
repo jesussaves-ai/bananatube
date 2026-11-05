@@ -20,8 +20,8 @@ static void *slow_server(void *arg)
     return NULL;
 }
 
-/* A media URL as YouTube's CDN serves it: 206 to an open-ended range, a megabyte of body, and nothing to a
- * request that does not ask for one. */
+/* A media URL as YouTube's CDN serves it: 206 to the open-ended range ffmpeg opens with, and a 403 to
+ * anything else. The probe must send exactly that. */
 static bool g_open_range;
 static void *range_server(void *arg)
 {
@@ -33,7 +33,7 @@ static void *range_server(void *arg)
     ssize_t n = recv(client, req, sizeof req - 1, 0);
     if (n > 0) {
         req[n] = '\0';
-        g_open_range = str_contains(req, "Range: bytes=0-");
+        g_open_range = str_contains(req, "Range: bytes=0-\r\n");
     }
     if (!g_open_range) {
         const char *no = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n";

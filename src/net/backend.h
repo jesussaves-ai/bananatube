@@ -55,6 +55,7 @@ typedef struct {
     int  bitrate_kbps;
     int  audio_kbps;
     bool video, audio;
+    bool original;                 /* the video's own audio track, not a dub */
     bool has_url;                  /* false: it came as a signatureCipher we will not solve */
 } Format;
 

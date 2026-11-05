@@ -88,7 +88,9 @@ int main(void)
     check_str_prop(m, "vo", "libmpv");
     check_str_prop(m, "hwdec", "v4l2m2m-copy");
     check_flag_prop(m, "vd-lavc-dr", true);
-    check_str_prop(m, "video-sync", "display-resample");
+    /* audio, not display-resample: the panel is flipped from a dumb buffer, so there is no vsync for mpv to
+     * time against and the render call waits for a display time that never comes. */
+    check_str_prop(m, "video-sync", "audio");
     check_str_prop(m, "video-output-levels", "limited");
 
     /* ---- nothing may override the above ---- */

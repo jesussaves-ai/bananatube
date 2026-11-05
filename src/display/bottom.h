@@ -28,7 +28,10 @@ typedef struct {
     bool      filled[2];       /* each buffer has been handed out whole at least once */
     /* what the last frame cost, for the log and the benchmark */
     int       last_damage, last_draws;
+    int       last_own, last_missed;   /* damage rects: this frame's changes, and what the hidden buffer missed */
     long      last_pixels;     /* how many pixels were repainted and copied to the panel */
+    long      last_paint_us, last_copy_us, last_flip_us;   /* where a frame's time went inside present() */
+    bool      last_modeset;    /* the flip was refused, so this frame was a modeset */
 } Bottom;
 
 bool bottom_init(Bottom *b, int fd, const DrmPanel *p);

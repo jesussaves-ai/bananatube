@@ -63,22 +63,46 @@ static const char *innertube_key(void)
     return (k && *k) ? k : INNERTUBE_KEY_DEFAULT;
 }
 
-/* The client block both calls send. */
-static void client_context(char *out, size_t cap)
+/* The client block. Two of them, because the endpoint that answers well is not the same one: an iOS search
+ * reply holds no video renderers at all (2.7 MB of a layout this cannot read), while the Android VR client's
+ * search is compactVideoRenderer; and the reverse for the player.
+ *
+ * The player is the visionOS client. Its media URLs carry a `spc` parameter instead of an `n` challenge, and
+ * googlevideo serves them whole: an open-ended "Range: bytes=0-" -- the one ffmpeg always opens with, and which
+ * every other client's URLs answer with HTTP 403 part-way down the file -- returns 206 and reads to the end.
+ * That is the whole reason the client is not the Android VR one it used to be. The reply also carries an HLS
+ * manifest (unused: a plain mp4 seeks by byte range and needs no demuxer). */
+static void client_context(char *out, size_t cap, bool search)
 {
     pthread_mutex_lock(&g_visitor_lock);
-    snprintf(out, cap,
-        "\"context\":{\"client\":{"
-        "\"clientName\":\"IOS\","
-        "\"clientVersion\":\"20.10.4\","
-        "\"deviceMake\":\"Apple\","
-        "\"deviceModel\":\"iPhone16,2\","
-        "\"osName\":\"iPhone\","
-        "\"osVersion\":\"18.3.1.22D72\","
-        "\"hl\":\"en\",\"gl\":\"US\","
-        "\"visitorData\":\"%s\","
-        "\"userAgent\":\"com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)\""
-        "}}", g_visitor);
+    if (search)
+        snprintf(out, cap,
+            "\"context\":{\"client\":{"
+            "\"clientName\":\"ANDROID_VR\","
+            "\"clientVersion\":\"1.64.0\","
+            "\"deviceMake\":\"Oculus\","
+            "\"deviceModel\":\"Quest 3\","
+            "\"osName\":\"Android\","
+            "\"osVersion\":\"12\","
+            "\"androidSdkVersion\":32,"
+            "\"hl\":\"en\",\"gl\":\"US\","
+            "\"visitorData\":\"%s\","
+            "\"userAgent\":\"com.google.android.apps.youtube.vr.oculus/1.64.0 (Linux; U; Android 12; GB) gzip\""
+            "}}", g_visitor);
+    else
+        snprintf(out, cap,
+            "\"context\":{\"client\":{"
+            "\"clientName\":\"VISIONOS\","
+            "\"clientVersion\":\"1.02\","
+            "\"deviceMake\":\"Apple\","
+            "\"deviceModel\":\"RealityDevice17,1\","
+            "\"osName\":\"visionOS\","
+            "\"osVersion\":\"26.5.23O471\","
+            "\"hl\":\"en\",\"gl\":\"US\","
+            "\"visitorData\":\"%s\","
+            "\"userAgent\":\"Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) Version/26.0 Safari/605.1.15\""
+            "}}", g_visitor);
     pthread_mutex_unlock(&g_visitor_lock);
 }
 
@@ -176,7 +200,7 @@ static void walk_video_renderers(const cJSON *node, SearchResult *out, int max, 
 static int innertube_search(const Conf *c, const char *query, SearchResult *out, int max)
 {
     char ctx[1200], body[2400], esc[512];
-    client_context(ctx, sizeof ctx);
+    client_context(ctx, sizeof ctx, true);
     url_encode(query, esc, sizeof esc);
     snprintf(body, sizeof body, "{%s,\"query\":\"%s\",\"params\":\"EgIQAQ%%3D%%3D\"}", ctx, esc);
 
@@ -289,6 +313,11 @@ static Format format_from_innertube(const cJSON *o)
     f.height = json_int(o, "height", 0);
     f.fps    = json_int(o, "fps", 0);
     f.bitrate_kbps = json_int(o, "bitrate", 0) / 1000;
+    {   /* A video with dubs offers one audio track per language at the same bitrate, and the first is often
+         * one of them: play the original unless this is the only track there is. */
+        const cJSON *track = cJSON_GetObjectItemCaseSensitive(o, "audioTrack");
+        f.original = !cJSON_IsObject(track) || json_bool(track, "audioIsDefault", false);
+    }
     json_str(o, "qualityLabel", q, sizeof q);
     if (!f.height && q[0]) { int h = atoi(q); if (h > 0) f.height = h; }
     f.video = f.vcodec[0] != '\0' || str_starts(f.mime, "video/");
@@ -312,7 +341,7 @@ static char *player_request(const Conf *c, const char *id)
     snprintf(url, sizeof url, "%s&key=%s", INNERTUBE_PLAYER, innertube_key());
 
     for (int attempt = 0; attempt < 2; attempt++) {
-        client_context(ctx, sizeof ctx);
+        client_context(ctx, sizeof ctx, false);
         snprintf(body, sizeof body,
             "{%s,\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}", ctx, id);
 

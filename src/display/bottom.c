@@ -1,8 +1,10 @@
 /* bottom.c */
 #include "display/bottom.h"
 #include "display/render.h"
+#include "display/renderstats.h"
 #include "util.h"
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +55,7 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
         if (!warned) { log_line("bottom: %s -- skipping a frame: a flip is in flight", p->name); warned = 1; }
         b->last_pixels = 0;
         b->last_draws = dl->n;
+        b->last_paint_us = b->last_copy_us = b->last_flip_us = 0;
         return;
     }
 
@@ -69,7 +72,9 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
      * `own` and `dmg` are deliberately separate: storing the *amplified* set back as "what this buffer missed"
      * fed the damage back into itself, and because more than MAX_DAMAGE rectangles collapse to one bounding
      * box, that collapse then repeated every frame -- the whole panel repainted, both panels, for ever. */
+    b->last_missed = b->missed[back].n;
     damage_next(&own, &b->missed[back], &dmg, &b->missed[back]);
+    b->last_own = own.n;
 
     /* Nothing changed, so the panel keeps its pixels -- unless the buffer we would flip to was never filled
      * (bottom_invalidate, a resize) and is still black: flip the whole panel rather than hand out a blank one. */
@@ -80,11 +85,14 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
         }
         else {
             b->last_pixels = 0;
+            b->last_paint_us = b->last_copy_us = b->last_flip_us = 0;
             return;
         }
     }
 
     if (scale <= 0) scale = 1.0f;                        /* 1.0 on the RG DS, 1.6 on the RG DS Plus */
+
+    double t_paint = render_now_us();
 
     /* Repaint only the damaged rectangles, every op that touches them clipped to them. */
     for (int i = 0; i < dmg.n; i++) {
@@ -105,6 +113,8 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
     b->last_damage = dmg.n;
     b->last_draws = dl->n;
     b->last_pixels = painted;
+    double t_copy = render_now_us();
+    b->last_paint_us = (long)(t_copy - t_paint);
 
     /* Copy the damaged rectangles into the spare scanout buffer and put it up. */
     DumbBuf *dst = &b->buf[back];
@@ -132,13 +142,22 @@ void bottom_present(Bottom *b, int fd, const DrmPanel *p, const DrawList *dl,
      * the top of this function skips a frame while it is up -- the two of them pass a token between them,
      * and an increment that is missing there means two flips queued at once, which cancels the first. */
     static int first_flip = -1, first_mode = -1;
+    double t_flip = render_now_us();
+    b->last_copy_us = (long)(t_flip - t_copy);
+    b->last_modeset = false;
     if (drm_page_flip(fd, p, dst, &b->pending)) {
         b->pending++;
         if (first_flip) { log_line("bottom: %s -- page flips", p->name); first_flip = 0; }
     } else {
+        int e = errno;      /* what drmModePageFlip said; drm_set_crtc below overwrites errno */
         drm_set_crtc(fd, p, dst);
-        if (first_mode) { log_line("bottom: %s -- flips refused, a modeset each frame", p->name); first_mode = 0; }
+        b->last_modeset = true;
+        if (first_mode) {
+            log_line("bottom: %s -- flips refused (%s), a modeset each frame", p->name, strerror(e));
+            first_mode = 0;
+        }
     }
+    b->last_flip_us = (long)(render_now_us() - t_flip);
 
     /* The buffer going behind the flip misses *this frame's* changes -- and only those. */
     b->missed[b->front] = own;

@@ -133,6 +133,7 @@ static void draw_image(RenderCanvas *b, const DrawOp *op, const BottomTex *tex, 
 /* Where a frame's time goes, by kind of drawing. render_ops() is the whole of a panel's paint, so timing
  * here answers "is it the text, the pictures or the fills" for any frame, on any machine. */
 static double g_us[3];
+static double g_fill_us;     /* every fill_rect_black() under a damage rectangle: what an empty rect costs */
 static long   g_calls[3];
 
 double render_now_us(void)

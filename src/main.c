@@ -470,6 +470,42 @@ static int cli_bench(int argc, char **argv)
     printf("  text:    %6.2f ms  %6ld draws\n", ms[1], calls[1]);
     printf("  images:  %6.2f ms  %6ld draws\n", ms[2], calls[2]);
     printf("  lists:   top %d draws, bottom %d draws\n", dl_top.n, dl_bot.n);
+
+    /* What a real frame would actually repaint. The bench above repaints everything on purpose; the app
+     * paints only the damaged rectangles, so this drives the same two-buffer bookkeeping bottom_present()
+     * does and reports the damage it would leave. A steady-state screen must come out small. */
+    {
+        DrawList prev[2];
+        Damage missed[2], own, dmg;
+        int front = 0;
+        memset(prev, 0, sizeof prev);
+        damage_reset(&missed[0]);
+        damage_reset(&missed[1]);
+        double r[2] = { 0, 0 }, ro[2] = { 0, 0 }, px[2] = { 0, 0 };
+
+        for (int i = 0; i < n; i++) {
+            ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+            ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+            const DrawList *cur[2] = { &dl_top, &dl_bot };
+            for (int p = 0; p < 2; p++) {
+                int back = front ^ 1;
+                dl_diff(&prev[p], cur[p], &own);
+                damage_next(&own, &missed[back], &dmg, &missed[back]);
+                r[p] += dmg.n;
+                ro[p] += own.n;
+                int x, y, dw, dh;
+                damage_bounds(&dmg, &x, &y, &dw, &dh);
+                px[p] += (double)dw * dh;
+                prev[p] = *cur[p];
+            }
+            front ^= 1;
+
+        }
+        printf("  damage:  top    %4.1f own -> %4.1f rects, %10.0f px a frame of %d\n",
+               ro[0] / n, r[0] / n, px[0] / n, w * h);
+        printf("           bottom %4.1f own -> %4.1f rects, %10.0f px a frame of %d\n",
+               ro[1] / n, r[1] / n, px[1] / n, w * h);
+    }
     if (getenv("BANANATUBE_DUMP")) {
         double f = 0;
         double l = render_now_us();
@@ -815,10 +851,11 @@ int main(int argc, char **argv)
         if (player) { wake_at = nfds; pfds[nfds].fd = player_wake_fd(player); pfds[nfds].events = POLLIN; nfds++; }
 #endif
 
-        /* A playing video sets the pace: mpv's pipe wakes us with each frame. */
+        /* A playing video sets the pace: mpv's pipe wakes us with each frame, and a short timeout keeps the
+         * render pump running (~60 Hz) even if that wake-up is late. */
         bool playing = ui.playing.active;
         bool waiting = ui.searching || thumb_worker_pending(thumbs) || resolve_job_busy(resolve);
-        int timeout = playing ? 1000 : (waiting ? 100 : (dirty ? 0 : 300));
+        int timeout = playing ? 16 : (waiting ? 100 : (dirty ? 0 : 300));
         int rc = poll(pfds, (nfds_t)nfds, timeout);
         if (rc < 0 && errno != EINTR) { log_line("poll: %s", strerror(errno)); break; }
 #ifdef BANANATUBE_MPV
@@ -1095,6 +1132,7 @@ int main(int argc, char **argv)
                 osd_draw(&osd, top.w, top.h);
 
                 gbm_egl_swap(fd, &egl);
+                player_report_swap(player);   /* the frame is on the panel: mpv may decode the next one */
                 dirty = true;                 /* the bottom screen may be showing the position */
             }
         }
@@ -1144,12 +1182,23 @@ int main(int argc, char **argv)
              * rectangles were repainted and how many pixels that was (the copy into the uncached scanout
              * buffer is the only slow memory in the path, so the pixel count is the number that matters). */
             int64_t t4 = now_ms();
-            if (t4 - t0 > 30)
+            if (t4 - t0 > 30) {
                 log_line("frame: %lld ms (lists %lld, top %lld, bottom %lld) -- %d+%d draws, "
                          "%d+%d damage rects, %ld+%ld px repainted of %d+%d", (long long)(t4 - t0),
                          (long long)(t1 - t0), (long long)(t2 - t1), (long long)(t3 - t2),
                          dl_top.n, dl_bot.n, top_ui.last_damage, bot_ui.last_damage,
                          top_ui.last_pixels, bot_ui.last_pixels, top.w * top.h, bot.w * bot.h);
+                /* Where the damage came from: this frame's own changes, and what the buffer being drawn into
+                 * missed while it was hidden. Both small means the diff works; a big one is the bug. */
+                log_line("  damage: top %d own + %d missed, bottom %d own + %d missed",
+                         top_ui.last_own, top_ui.last_missed, bot_ui.last_own, bot_ui.last_missed);
+                /* Where those milliseconds went: painting, the copy into the scanout buffer, or the ioctl. */
+                log_line("  inside: top %ld+%ld+%ld us (paint+copy+ioctl%s), bottom %ld+%ld+%ld us%s",
+                         top_ui.last_paint_us, top_ui.last_copy_us, top_ui.last_flip_us,
+                         top_ui.last_modeset ? ", a modeset" : "",
+                         bot_ui.last_paint_us, bot_ui.last_copy_us, bot_ui.last_flip_us,
+                         bot_ui.last_modeset ? " (a modeset)" : "");
+            }
 
             dirty = false;
         }

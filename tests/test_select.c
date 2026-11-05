@@ -27,6 +27,7 @@ static Format audio(const char *mime, int kbps, const char *url)
     strncpy(f.mime, mime, sizeof f.mime - 1);
     strncpy(f.acodec, "mp4a.40.2", sizeof f.acodec - 1);
     f.audio_kbps = kbps;
+    f.original = true;
     f.audio = true;
     f.has_url = true;
     strncpy(f.url, url, sizeof f.url - 1);
@@ -80,6 +81,16 @@ int main(void)
     a[2].acodec[0] = 'm';
     check_int(select_audio_format(a, 3, true), 1);
     check_int(select_audio_format(a, 3, false), 0);
+
+    /* a dubbed track loses to the original even at a higher bitrate, and is all there is when there is no
+     * original at all */
+    Format dub[2];
+    dub[0] = audio("audio/mp4", 160, "https://x/dub.m4a");
+    dub[0].original = false;
+    dub[1] = audio("audio/mp4", 128, "https://x/orig.m4a");
+    check_int(select_audio_format(dub, 2, true), 1);
+    check_int(select_audio_format(dub, 1, true), 0);     /* a dub is still sound when it is the only track */
+    check_int(select_audio_format(dub + 1, 1, true), 0);
 
     check_str(resolve_status_text(RESOLVE_OK), "ready");
     check(str_contains(resolve_status_text(RESOLVE_NO_SUITABLE_FORMAT), "decode"));

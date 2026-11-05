@@ -75,6 +75,9 @@ Player *player_create(const char *hwdec, int audio_buffer_ms)
     set(p->mpv, "load-scripts", "no");
     set(p->mpv, "terminal", "yes");
     set(p->mpv, "msg-level", "all=warn");
+    /* Without this no MPV_EVENT_LOG_MESSAGE ever arrives: mpv's own complaints (the render API's
+     * "not being called or stuck" among them) were invisible in every log taken so far. */
+    mpv_request_log_messages(p->mpv, "warn");
 
     /* The render API: we own the surface (the panel) and the loop. */
     set(p->mpv, "vo", "libmpv");
@@ -96,7 +99,10 @@ Player *player_create(const char *hwdec, int audio_buffer_ms)
     set(p->mpv, "hwdec", (hwdec && *hwdec) ? hwdec : "auto-safe");
 
     /* What looks right on these panels. */
-    set(p->mpv, "video-sync", "display-resample");
+    /* Audio is the clock. display-resample would have mpv pace video from our swap timing, which is not
+     * vsync-locked (the panels are driven by a plain dumb-buffer flip): the player then waits for a display
+     * time that never arrives and playback stops on the first frame. It is also the resampler on an A55. */
+    set(p->mpv, "video-sync", "audio");
     set(p->mpv, "video-output-levels", "limited");
     set(p->mpv, "keepaspect", "yes");
     set(p->mpv, "interpolation", "no");      /* an A55 has no room for it, and the panels are 60 Hz */
@@ -133,7 +139,11 @@ bool player_attach_render(Player *p, const PlayerGl *gl)
     /* EGL on GBM: the context is current on this thread, so the render API takes that one and needs no
      * display handle (that is what the X11/Wayland params are for). */
     mpv_opengl_init_params ip = { .get_proc_address = get_proc, .get_proc_address_ctx = p };
-    int adv = 1;
+    /* Advanced control is deliberately OFF. It requires the render calls and the normal libmpv calls to be on
+     * different threads ("otherwise a real deadlock will freeze the mpv core thread forever", render.h); this
+     * app is single-threaded, so enabling it froze the core on the first video frame. Without it a violation
+     * is non-fatal. */
+    int adv = 0;
     mpv_render_param params[] = {
         { MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_OPENGL },
         { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &ip },
@@ -195,11 +205,16 @@ bool player_open(Player *p, const StreamUrl *s)
     if (!p || !s || !s->url[0]) return false;
     player_close(p);
 
-    /* DASH: the video and its sound are two URLs. mpv plays them together, synced on their timestamps. */
-    if (s->audio_url[0]) mpv_set_option_string(p->mpv, "audio-file", s->audio_url);
-    else                 mpv_set_option_string(p->mpv, "audio-file", "");
+    /* DASH: the video and its sound are two URLs. mpv plays them together, synced on their timestamps.
+     * They go to mpv as they came: the visionOS client hands out URLs that serve an open-ended range
+     * (see client_context), which is the shape ffmpeg opens with. */
+    const char *v = s->url, *a = s->audio_url;
 
-    const char *cmd[] = { "loadfile", s->url, "replace", NULL };
+    /* DASH: the video and its sound are two URLs. mpv plays them together, synced on their timestamps. */
+    if (a[0]) mpv_set_option_string(p->mpv, "audio-file", a);
+    else      mpv_set_option_string(p->mpv, "audio-file", "");
+
+    const char *cmd[] = { "loadfile", v, "replace", NULL };
     int r = mpv_command(p->mpv, cmd);
     if (r < 0) {
         snprintf(p->error, sizeof p->error, "%s", mpv_error_string(r));
@@ -277,7 +292,7 @@ void player_tick(Player *p)
             break;
         case MPV_EVENT_LOG_MESSAGE: {
             mpv_event_log_message *m = e->data;
-            if (m && m->level && strncmp(m->level, "error", 5) == 0)
+            if (m && m->level)
                 log_line("mpv: %s%s", m->prefix ? m->prefix : "", m->text ? m->text : "");
             break;
         }
@@ -308,16 +323,25 @@ bool player_frame_ready(Player *p)
 void player_render(Player *p)
 {
     if (!p || !p->rc) return;
-    if (!mpv_render_context_update(p->rc)) return;      /* nothing new: keep the last frame */
-
+    /* Advanced control is off (see player_attach_render), so there is no update() handshake to honour: the
+     * update callback tells the main loop a frame is ready and this draws it. */
     mpv_opengl_fbo fbo = { .fbo = 0, .w = p->gl.width, .h = p->gl.height, .internal_format = 0 };
     int flip = 1;
+    /* Do not let render() wait for the frame's target display time: a timed wait here is the only place the
+     * main loop can block, and its clock comes from mpv's own timing, not from our swap. */
+    int block = 0;
     mpv_render_param params[] = {
         { MPV_RENDER_PARAM_OPENGL_FBO, &fbo },
         { MPV_RENDER_PARAM_FLIP_Y, &flip },
+        { MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block },
         { 0, NULL },
     };
     mpv_render_context_render(p->rc, params);
+}
+
+void player_report_swap(Player *p)
+{
+    if (p && p->rc) mpv_render_context_report_swap(p->rc);
 }
 
 void player_set_paused(Player *p, bool paused)
