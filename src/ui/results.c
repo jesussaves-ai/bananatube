@@ -112,15 +112,23 @@ void results_draw(DrawList *dl, const Results *r, const UiTheme *t, const Bottom
         int bx, by, bw, bh;
         results_card_box(r, i, x, y, w, &bx, &by, &bw, &bh);
 
+        /* Each card is clipped to itself. A channel name that did not fit used to run past the card's edge,
+         * be cut mid-glyph, and land inside the neighbour. */
+        dl_push_clip(dl, bx, by, bw, bh);
+
         if (on) {
-            dl_rect_rounded(dl, bx, by, bw, bh, W_RADIUS_CARD, t->panel_hi);   /* the focused card is lighter */
-            dl_rect_rounded(dl, bx, by, bw, 3, 2, t->accent);                  /* and it is rimmed */
+            /* The focused card is the lighter one inside a 2px accent rim. (It used to get a 3px accent bar
+             * across its top edge as well, which read as a tab stuck onto the card.) */
+            dl_rect_rounded(dl, bx, by, bw, bh, W_RADIUS_CARD, t->accent);
+            dl_rect_rounded(dl, bx + 2, by + 2, bw - 4, bh - 4, W_RADIUS_CARD - 2, t->panel_hi);
         } else {
             widget_panel(dl, t, bx, by, bw, bh, W_RADIUS_CARD);
         }
 
-        /* the picture follows the card's width, so the wider card shows a wider one */
-        int iw = bw - CARD_PAD * 2, ih = iw * 9 / 16;
+        /* The picture takes all the height the text does not: worth it, because the cards are sized for the
+         * focused one and a narrower card's 16:9 picture left a dead band under its title. */
+        int iw = bw - CARD_PAD * 2;
+        int ih = bh - CARD_PAD * 2 - CARD_TITLE_H - CARD_META_H - 8;
         int slot = r->tex_slot[i];
         int has = (slot >= 0 && slot < tex_n && tex && tex[slot].pixels) ? 1 : 0;
         dl_image(dl, bx + CARD_PAD, by + CARD_PAD, iw, ih, has ? slot : IMAGE_NONE,
@@ -150,10 +158,11 @@ void results_draw(DrawList *dl, const Results *r, const UiTheme *t, const Bottom
         char views[24];
         fmt_views(s->views, views, sizeof views);
         char meta[128];
-        if (views[0]) snprintf(meta, sizeof meta, "%s\xC2\xB7 %s views", s->channel, views);
+        if (views[0]) snprintf(meta, sizeof meta, "%s \xC2\xB7 %s views", s->channel, views);
         else          snprintf(meta, sizeof meta, "%s", s->channel);
         widget_tiny(dl, t, bx + CARD_PAD + 2, by + bh - CARD_PAD - CARD_META_H, bw - CARD_PAD * 2 - 4,
                     CARD_META_H, meta, ALIGN_LEFT);
+        dl_pop_clip(dl);
     }
     dl_pop_clip(dl);
 }

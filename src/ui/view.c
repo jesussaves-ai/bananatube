@@ -235,6 +235,13 @@ UiAction ui_key(AppState *st, BananaKey key)
     }
 
     if (st->view == VIEW_KEYBOARD) {
+        /* A D-pad move lights a different key, so the frame has to be redrawn. kb_press answers
+         * KB_ACTION_NONE for it, which is not "nothing happened" -- and without this the main loop waits
+         * 300 ms before redrawing a frame nothing asked for, which was the keyboard's D-pad lag. */
+        if (kb_move(&st->kb, key)) {
+            st->dirty = true;
+            return UI_NONE;
+        }
         char ch[8] = "";
         KbAction a = kb_press(&st->kb, key, ch, sizeof ch);
         switch (a) {
@@ -345,38 +352,41 @@ static void draw_hints(AppState *st, DrawList *dl)
     int x = 10;
     int y = SCREEN_H - HINTS_H + (HINTS_H - 18) / 2;
 
+    /* One accent chip per row -- the action the row leads with, the one the thumb is already on. Two accent
+     * chips read as two primary actions, and on the handheld that is what made the bar look loud. */
     if (st->view == VIEW_PLAYING) {
-        x += widget_hint(dl, t, x, y, BK_START, st->playing.paused ? "resume" : "pause", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_LEFT, "seek", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_UP, "volume", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_X, "quality", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_B, "stop", true) + 12;
+        x += widget_hint(dl, t, x, y, BK_START, st->playing.paused ? "resume" : "pause", true) + 16;
+        x += widget_hint(dl, t, x, y, BK_LEFT, "seek", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_UP, "volume", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_X, "quality", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_B, "stop", false) + 16;
     } else if (st->view == VIEW_HISTORY) {
-        x += widget_hint(dl, t, x, y, BK_A, "carry on", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_B, "back", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_HOME, "quit", false) + 12;
+        x += widget_hint(dl, t, x, y, BK_A, "carry on", true) + 16;
+        x += widget_hint(dl, t, x, y, BK_B, "back", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_HOME, "quit", false) + 16;
     } else if (st->view == VIEW_KEYBOARD) {
-        x += widget_hint(dl, t, x, y, BK_A, "type", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_START, "search", true) + 12;
+        x += widget_hint(dl, t, x, y, BK_A, "type", true) + 16;
+        x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_START, "search", false) + 16;
     } else if (st->view == VIEW_SETTINGS) {
         if (st->settings.editing) {
-            x += widget_hint(dl, t, x, y, BK_A, "type", true) + 12;
-            x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 12;
-            x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 12;
-            x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 12;
-            x += widget_hint(dl, t, x, y, BK_START, "save", true) + 12;
+            x += widget_hint(dl, t, x, y, BK_A, "type", true) + 16;
+            x += widget_hint(dl, t, x, y, BK_X, "capitals", false) + 16;
+            x += widget_hint(dl, t, x, y, BK_Y, "space", false) + 16;
+            x += widget_hint(dl, t, x, y, BK_B, "delete", false) + 16;
+            x += widget_hint(dl, t, x, y, BK_START, "save", false) + 16;
         } else {
-            x += widget_hint(dl, t, x, y, BK_A, "change", true) + 12;
-            x += widget_hint(dl, t, x, y, BK_B, "back", false) + 12;
+            x += widget_hint(dl, t, x, y, BK_A, "change", true) + 16;
+            x += widget_hint(dl, t, x, y, BK_B, "back", false) + 16;
         }
     } else {
-        x += widget_hint(dl, t, x, y, BK_A, "play", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_SELECT, "search", true) + 12;
-        x += widget_hint(dl, t, x, y, BK_Y, "watched", false) + 12;
-        x += widget_hint(dl, t, x, y, BK_B, "clear", false) + 12;
+        /* With nothing found yet there is nothing to play, so the accent is on the search instead. */
+        x += widget_hint(dl, t, x, y, BK_A, "play", st->results.count > 0) + 16;
+        x += widget_hint(dl, t, x, y, BK_SELECT, "search", st->results.count == 0) + 16;
+        x += widget_hint(dl, t, x, y, BK_Y, "watched", false) + 16;
+        x += widget_hint(dl, t, x, y, BK_B, "clear", false) + 16;
     }
     /* the status only where there is room for it: the keyboard's hints fill the row, and a message drawn
      * over them reads as neither */
@@ -525,11 +535,11 @@ static void draw_details(AppState *st, DrawList *dl, const BottomTex *tex, int t
     int y = 24;
 
     if (st->view == VIEW_RESULTS && !st->results.count) {
-        widget_title(dl, t, 20, y, SCREEN_W - 40, 34, "BananaTube", ALIGN_LEFT);
-        widget_label(dl, t, 20, y + 46, SCREEN_W - 40, 24, "Press SELECT to search", ALIGN_LEFT);
+        widget_title(dl, t, 20, y, SCREEN_W - 40, 34, "BananaTube", ALIGN_CENTER);
+        widget_label(dl, t, 20, y + 46, SCREEN_W - 40, 24, "Press SELECT to search", ALIGN_CENTER);
         widget_small(dl, t, 20, y + 76, SCREEN_W - 40, 40,
                      "The keyboard comes up down here; the results and the video are on the top screen.",
-                     ALIGN_LEFT);
+                     ALIGN_CENTER);
         return;
     }
 
@@ -554,19 +564,24 @@ static void draw_details(AppState *st, DrawList *dl, const BottomTex *tex, int t
     }
     if (!title) return;
 
+    /* Centred: this panel is the caption for whatever the rail has focused. */
     dl_text_wrapped(dl, 20, y, SCREEN_W - 40, 68, title, FONT_UI_BOLD, W_SIZE_DISPLAY, t->ink,
-                    ALIGN_LEFT, VALIGN_TOP, 2, 28);
-    widget_tiny(dl, t, 20, y + 74, SCREEN_W - 40, 20, channel ? channel : "", ALIGN_LEFT);
-    widget_tiny(dl, t, 20, y + 96, SCREEN_W - 40, 20, line, ALIGN_LEFT);
+                    ALIGN_CENTER, VALIGN_TOP, 2, 28);
+    widget_tiny(dl, t, 20, y + 74, SCREEN_W - 40, 20, channel ? channel : "", ALIGN_CENTER);
+    widget_tiny(dl, t, 20, y + 96, SCREEN_W - 40, 20, line, ALIGN_CENTER);
 
-    /* The picture, large: the panel is mostly empty otherwise, and this is the video about to be played. */
-    int pw = SCREEN_W - 40, ph = SCREEN_H - 30 - (y + 122) - 10;
+    /* The picture, large: a 16:9 frame centred in what the text above leaves, so it reads as the video about
+     * to be played rather than as a full-width empty panel. */
+    int avail_w = SCREEN_W - 40, avail_h = SCREEN_H - 30 - (y + 122) - 10;
+    int pw = avail_w, ph = pw * 9 / 16;
+    if (ph > avail_h) { ph = avail_h; pw = ph * 16 / 9; }
     if (ph > 40) {
         int has = (slot >= 0 && slot < tex_n && tex && tex[slot].pixels) ? slot : IMAGE_NONE;
-        dl_rect_rounded(dl, 20, y + 122, pw, ph, 10, t->bg);
-        dl_image(dl, 20, y + 122, pw, ph, has, FIT_CONTAIN, t->panel);
+        int px = (SCREEN_W - pw) / 2, py = y + 122 + (avail_h - ph) / 2;
+        dl_rect_rounded(dl, px, py, pw, ph, 10, t->bg);
+        dl_image(dl, px, py, pw, ph, has, FIT_CONTAIN, t->panel);
         if (has == IMAGE_NONE)
-            widget_small(dl, t, 20, y + 122, pw, ph, "the picture is still loading", ALIGN_CENTER);
+            widget_small(dl, t, px, py, pw, ph, "the picture is still loading", ALIGN_CENTER);
     }
 }
 

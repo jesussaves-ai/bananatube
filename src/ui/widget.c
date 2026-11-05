@@ -23,6 +23,7 @@ int widget_hint(DrawList *dl, const UiTheme *t, int x, int y, BananaKey key, con
 {
     const char *k = key_hint_label(key);
     int kw = 14 + 7 * (int)strlen(k);                 /* a chip as wide as its letters need */
+    if (kw < 30) kw = 30;                             /* ...but a one-letter key is not a sliver */
     dl_rect_rounded(dl, x, y, kw, 18, W_RADIUS_CHIP, hot ? t->accent : t->panel_hi);
     dl_text(dl, x, y, kw, 18, k, FONT_UI_BOLD, W_SIZE_SMALL, hot ? t->accent_ink : t->ink, ALIGN_CENTER, VALIGN_MIDDLE);
     dl_text(dl, x + kw + 5, y, 200, 18, label, FONT_UI, W_SIZE_BODY, hot ? t->ink : t->muted, ALIGN_LEFT, VALIGN_MIDDLE);
@@ -70,7 +71,7 @@ void widget_header(DrawList *dl, const UiTheme *t, const HeaderInfo *info)
         int mark = (info && info->logo_image >= 0);
         int x = mark ? 44 : 16;
         if (mark) dl_image(dl, 12, 10, 24, 24, info->logo_image, FIT_CONTAIN, t->bar);
-        dl_text(dl, x, 0, 400, 44, "Banana", FONT_UI_BOLD, W_SIZE_DISPLAY, t->accent,
+        dl_text(dl, x, 0, 400, 44, "Banana", FONT_UI_BOLD, W_SIZE_DISPLAY, t->brand,
                 ALIGN_LEFT, VALIGN_MIDDLE);
         if (info && info->tube_x > 0)
             dl_text(dl, x + info->tube_x, 0, 400, 44, "Tube", FONT_UI_BOLD, W_SIZE_DISPLAY, t->ink,
@@ -78,10 +79,12 @@ void widget_header(DrawList *dl, const UiTheme *t, const HeaderInfo *info)
     }
 
     if (info && info->battery >= 0) {
+        /* The number and its bar are one piece of furniture, stacked: the bar used to sit low and off to the
+         * right of the number, which read as two unrelated things. */
         char pct[16];
         snprintf(pct, sizeof pct, "%d%%", info->battery);
-        widget_mono(dl, t, SCREEN_W - 244, 6, 40, 32, pct, ALIGN_RIGHT);
-        widget_bar(dl, t, SCREEN_W - 196, 28, 44, 6, (float)info->battery / 100.0f, true);
+        widget_mono(dl, t, SCREEN_W - 216, 4, 56, 24, pct, ALIGN_RIGHT);
+        widget_bar(dl, t, SCREEN_W - 216, 30, 56, 5, (float)info->battery / 100.0f, true);
     }
 
     time_t now = time(NULL);

@@ -10,6 +10,9 @@
 
 typedef struct {
     uint32_t bg, bar, panel, panel_hi, ink, muted, faint, accent, accent_ink, hot, warn, good;
+    /* The brand's own colour. The mark beside the wordmark is always the banana yellow, so the wordmark's
+     * first half is too, whatever the menu's accent is set to. */
+    uint32_t brand, brand_ink;
 } UiTheme;
 
 UiTheme ui_theme(void);

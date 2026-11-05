@@ -52,6 +52,8 @@ UiTheme ui_theme_with(const char *theme, const char *accent)
     t.faint     = light ? 0xffa69d8c : 0xff8a8374;
     t.accent    = 0xff000000u | a;
     t.accent_ink= ink_on(a);
+    t.brand     = 0xff000000u | 0xf0b429;
+    t.brand_ink = ink_on(0xf0b429);
     t.hot       = light ? t.accent : 0xffffcf5c;
     t.warn      = 0xffff3b4a;
     t.good      = 0xff6fbf73;

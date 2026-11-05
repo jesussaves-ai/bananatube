@@ -251,6 +251,15 @@ int main(void)
     ui_key(&st, BK_X);
     check(st.view_h >= RAIL_CARD_H);
 
+    /* A D-pad move in the keyboard view lights a different key, so the frame has to be redrawn. The main
+     * loop waits 300 ms before redrawing a frame nothing asked for, and that wait was the keyboard's D-pad
+     * lag on the handheld: the cursor only moved when the clock ticked. */
+    ui_init(&st);
+    ui_key(&st, BK_X);                                   /* the keyboard */
+    st.dirty = false;
+    check_int(ui_key(&st, BK_RIGHT), UI_NONE);
+    check(st.dirty);
+
     /* ---- a frame's draw list is that frame's, and nothing else's ----
      * ui_draw clears the list it is handed. The app used to reset it once outside its main loop, so every
      * frame appended another copy of the whole UI: the count grew by a screenful per frame until the list hit

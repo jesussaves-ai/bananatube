@@ -899,10 +899,12 @@ int main(int argc, char **argv)
 
     AppState ui;
     ui_init(&ui);
-    char theme[16] = "dark", accent[16] = "yellow";
+    char theme[16] = "dark";
     file_key_value("/data/banana/settings.conf", "theme", theme, sizeof theme);
-    file_key_value("/data/banana/settings.conf", "accent", accent, sizeof accent);
-    ui.theme = ui_theme_with(theme, accent);
+    /* The menu's accent is the menu's, not this app's: BananaTube is the banana, so its accent is the banana
+     * yellow whatever the menu is set to. (The menu's own accent used to come through here, which painted the
+     * this app purple.) The theme -- dark or light -- is still the menu's, so the two sit together. */
+    ui.theme = ui_theme_with(theme, "yellow");
     ui_set_history(&ui, &history);
     if (initial && *initial) {
         str_copy(ui.query, sizeof ui.query, initial);

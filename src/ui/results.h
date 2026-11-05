@@ -18,7 +18,7 @@
 #define RESULTS_MAX SEARCH_RESULTS_MAX
 
 #define RAIL_CARD_W 150
-#define RAIL_CARD_H 184          /* the widest card's 16:9 picture, a two-line title and the meta line */
+#define RAIL_CARD_H 184          /* a two-line title, the meta line, and a 16:9 picture between them */
 #define RAIL_GAP    12
 #define RAIL_PAGE   3            /* a page is one card more than the screen holds */
 
