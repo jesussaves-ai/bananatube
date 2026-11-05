@@ -506,6 +506,41 @@ static int cli_bench(int argc, char **argv)
         printf("           bottom %4.1f own -> %4.1f rects, %10.0f px a frame of %d\n",
                ro[1] / n, r[1] / n, px[1] / n, w * h);
     }
+
+    /* What one press of RIGHT costs. The app repaints only the damaged rectangles, and a selection move is
+     * the frame the owner says is slow -- so this is the number to watch. The two draws differ by the
+     * selection rim and the details panel, and both are inside the damage. */
+    if (ui.results.count > 1) {
+        ui.results.sel = 0;
+        ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+        ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+        DrawList before_top = dl_top, before_bot = dl_bot;
+        ui_key(&ui, BK_RIGHT);
+        ui_draw_top(&ui, &dl_top, pics, THUMB_MAX_SLOTS);
+        ui_draw_bot(&ui, &dl_bot, pics, THUMB_MAX_SLOTS);
+        DrawList cur[2] = { dl_top, dl_bot }, old[2] = { before_top, before_bot };
+        long px = 0;
+        render_stats_reset();
+        double t0 = render_now_us();
+        for (int p = 0; p < 2; p++) {
+            Damage own, missed, dmg;
+            dl_diff(&old[p], &cur[p], &own);
+            damage_reset(&missed);
+            damage_reset(&dmg);
+            damage_next(&own, &missed, &dmg, &missed);   /* one list, so nothing was missed */
+            int x, y, dw, dh;
+            damage_bounds(&dmg, &x, &y, &dw, &dh);
+            px += (long)dw * dh;
+            render_ops(canvas, w, h, fnt, &cur[p], pics, THUMB_MAX_SLOTS, scale,
+                       render_scale(x, scale), render_scale(y, scale),
+                       render_scale(dw, scale) < 1 ? 1 : render_scale(dw, scale),
+                       render_scale(dh, scale) < 1 ? 1 : render_scale(dh, scale));
+        }
+        double mv = render_now_us() - t0;
+        render_stats(ms, calls);
+        printf("  move:    %6.2f ms   %ld px repainted, %ld rect draws, %ld text draws, %ld image draws\n",
+               mv / 1000.0, px, calls[0], calls[1], calls[2]);
+    }
     if (getenv("BANANATUBE_DUMP")) {
         double f = 0;
         double l = render_now_us();
