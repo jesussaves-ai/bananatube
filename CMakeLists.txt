@@ -52,6 +52,7 @@ add_library(bananatube_core STATIC
     src/ui/results.c
     src/ui/view.c
     src/ui/settings.c
+    src/ui/battery.c
 )
 target_include_directories(bananatube_core PUBLIC src)
 pkg_check_modules(CURL  REQUIRED libcurl)
@@ -111,7 +112,7 @@ endif()
 # ---- tests --------------------------------------------------------------------------------------------
 if(BANANATUBE_TESTS)
     enable_testing()
-    foreach(t drawlist keys conf parse select lru ui worker render history args settings util http theme widget logo)
+    foreach(t drawlist keys conf parse select lru ui worker render history args settings util http theme widget logo battery)
         add_executable(test_${t} tests/test_${t}.c)
         target_link_libraries(test_${t} PRIVATE bananatube_core)
         target_compile_definitions(test_${t} PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
