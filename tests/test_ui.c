@@ -359,6 +359,21 @@ int main(void)
     check_str(buf, "--:--");
 
     /* ---- the header ---- */
+    /* The mark can be missing -- a corrupt or absent PNG -- and the wordmark must still say both halves: the
+     * picture is what was lost, not the "Tube". */
+    ui_init(&st);
+    ui_set_logo(&st, -1, 40);
+    DrawList hn;
+    ui_draw_top(&st, &hn, NULL, 0);
+    int nb = 0, nt = 0;
+    for (int i = 0; i < hn.n; i++) {
+        if (hn.op[i].kind != OP_TEXT) continue;
+        if (strcmp(hn.op[i].text, "Banana") == 0) nb++;
+        if (strcmp(hn.op[i].text, "Tube") == 0) nt++;
+    }
+    check_int(nb, 1);
+    check_int(nt, 1);
+
     ui_init(&st);
     ui_set_battery(&st, 67, true);
     ui_set_logo(&st, 0, 40);   /* a slot, not an address: a draw op names a picture by its index */

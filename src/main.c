@@ -135,11 +135,16 @@ static void refresh_battery(AppState *ui)
 static void load_logo(AppState *ui, BottomTex *pics, FontCtx *fnt)
 {
     static BottomTex mark;
-    if (!logo_load(&mark, logo_path(), theme_bar_rgb(&ui->theme))) return;
-    tex_store(pics, THUMB_MAX_SLOTS, THUMB_MARK_SLOT, (uint8_t *)mark.pixels, mark.w, mark.h);
-    mark.pixels = NULL;                                  /* the slot owns it now */
+    int image = -1;
+    if (logo_load(&mark, logo_path(), theme_bar_rgb(&ui->theme))) {
+        tex_store(pics, THUMB_MAX_SLOTS, THUMB_MARK_SLOT, (uint8_t *)mark.pixels, mark.w, mark.h);
+        mark.pixels = NULL;                              /* the slot owns it now */
+        image = THUMB_MARK_SLOT;
+    }
+    /* The wordmark is two halves whatever the picture does: a missing or broken PNG costs the mark, not the
+     * "Tube". Otherwise the header would read "Banana" alone. */
     if (fnt)
-        ui_set_logo(ui, THUMB_MARK_SLOT, font_text_width(fnt, FONT_UI_BOLD, W_SIZE_DISPLAY, "Banana") + 6);
+        ui_set_logo(ui, image, font_text_width(fnt, FONT_UI_BOLD, W_SIZE_DISPLAY, "Banana") + 6);
 }
 
 /* Ask for the picture of every tile on screen that has not got one: what draws the grid is what decides what
