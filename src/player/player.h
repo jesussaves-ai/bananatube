@@ -42,9 +42,8 @@ void    player_wake_drain(Player *p);
 /* mpv asked for a frame (or the state changed): draw the surface and present it. */
 bool    player_frame_ready(Player *p);
 void    player_render(Player *p);
-/* The frame drawn by player_render() has been presented: mpv waits for this before it decodes the next
- * one. Required because the render context was created with ADVANCED_CONTROL; without it the video stops
- * after its first frame and every thread parks. */
+/* The frame drawn by player_render() has been presented. Optional, but calling it once tells libmpv we use
+ * it, and it helps the player's timing: call it on every presented frame and never sometimes (render.h). */
 void    player_report_swap(Player *p);
 void    player_tick(Player *p);                  /* drain mpv's events: errors, end of file */
 

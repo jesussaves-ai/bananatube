@@ -18,6 +18,9 @@ typedef struct {
     FontId   id;
     int      size;
     uint32_t cp;
+    bool     ok;          /* the slot holds this glyph. A space rasterises to no bitmap, so `bm == NULL`
+                             cannot stand for "empty": testing it re-rasterised every space on every
+                             lookup (measuring, wrapping and drawing all walk the same string). */
     int      w, h, bx, by, adv;
     uint8_t *bm;          /* w*h coverage, 8 bits a pixel */
 } Glyph;
@@ -107,7 +110,7 @@ static Glyph *glyph_get(FontCtx *f, FontId id, int size, uint32_t cp)
     int idx = f->index[hash];
     if (idx) {
         Glyph *g = &f->glyph[idx - 1];
-        if (g->bm && g->id == id && g->size == size && g->cp == cp) return g;
+        if (g->ok && g->id == id && g->size == size && g->cp == cp) return g;
     }
 
     if (FT_Set_Pixel_Sizes(f->face[id], 0, (FT_UInt)size)) return NULL;
@@ -118,7 +121,7 @@ static Glyph *glyph_get(FontCtx *f, FontId id, int size, uint32_t cp)
     f->next = (f->next + 1) % GLYPH_CACHE;
 
     /* the slot being reused leaves the index if it was what this key's hash pointed at */
-    if (g->bm) {
+    if (g->ok) {
         uint32_t oh = glyph_hash(g->id, g->size, g->cp);
         if (f->index[oh] == slot + 1) f->index[oh] = 0;
     }
@@ -137,6 +140,7 @@ static Glyph *glyph_get(FontCtx *f, FontId id, int size, uint32_t cp)
     g->bx = s->bitmap_left;
     g->by = s->bitmap_top;
     g->adv = (int)(s->advance.x >> 6);
+    g->ok = true;
     f->index[hash] = slot + 1;
     return g;
 }

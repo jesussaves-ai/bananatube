@@ -28,6 +28,8 @@ struct Player {
     int     width, height;
     int     dropped;
     int64_t entry;                  /* the playlist entry we started: an older file's END_FILE is not ours */
+    char    audio_file[URL_LEN];    /* the DASH sound, added by command once the video is loaded */
+    bool    audio_added;
     char    error[160];
 };
 
@@ -210,9 +212,12 @@ bool player_open(Player *p, const StreamUrl *s)
      * (see client_context), which is the shape ffmpeg opens with. */
     const char *v = s->url, *a = s->audio_url;
 
-    /* DASH: the video and its sound are two URLs. mpv plays them together, synced on their timestamps. */
-    if (a[0]) mpv_set_option_string(p->mpv, "audio-file", a);
-    else      mpv_set_option_string(p->mpv, "audio-file", "");
+    /* The sound cannot be declared here. --audio-file is an alias for --audio-files-append, which mpv marks
+     * "CLI/config files only": through the libmpv API it is "option not found", before and after initialize().
+     * Setting it used to fail silently and the video played mute. It goes on as a track instead, in
+     * player_tick() once the file is loaded -- audio-add before that fails. */
+    snprintf(p->audio_file, sizeof p->audio_file, "%s", a);
+    p->audio_added = false;
 
     const char *cmd[] = { "loadfile", v, "replace", NULL };
     int r = mpv_command(p->mpv, cmd);
@@ -289,6 +294,14 @@ void player_tick(Player *p)
         }
         case MPV_EVENT_FILE_LOADED:
             log_line("player: playing");
+            /* The DASH sound goes on as a second track. It has to wait for this event: audio-add before the
+             * file is loaded fails with "error running command". */
+            if (p->audio_file[0] && !p->audio_added) {
+                const char *add[] = { "audio-add", p->audio_file, "select", NULL };
+                int ar = mpv_command(p->mpv, add);
+                p->audio_added = ar >= 0;
+                log_line("player: audio-add: %s", ar >= 0 ? "ok" : mpv_error_string(ar));
+            }
             break;
         case MPV_EVENT_LOG_MESSAGE: {
             mpv_event_log_message *m = e->data;
